@@ -1,0 +1,9 @@
+venv/
+.venv/
+
+**/pycache/**
+
+**/temp/
+**logs/
+**/experiments
+**/data/
