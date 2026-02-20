@@ -1,6 +1,6 @@
 import pandas as pd
 from sklearn.ensemble import IsolationForest
-from src.config import DataSchema, BusinessLabels, FraudStatus, AIConstants, get_logger
+from src.config import DatasetKeys, BusinessLabels, FraudStatus, AIConstants, get_logger
 
 logger = get_logger(__name__)
 
@@ -37,12 +37,12 @@ class FraudDetector:
         logger.info("Iniciando Fase 3: Cruce lógico de contratos...")
         
         # 1. Aplicamos la lógica de discrepancia (Fase 3)
-        df_results[DataSchema.STATUS] = df_results.apply(
+        df_results[DatasetKeys.STATUS] = df_results.apply(
             self._logic_check, axis=1, args=(col_label_ia, col_contrato)
         )
 
         # 2. Filtramos solo los sospechosos
-        df_suspects = df_results[df_results[DataSchema.STATUS] != FraudStatus.OK].copy()
+        df_suspects = df_results[df_results[DatasetKeys.STATUS] != FraudStatus.OK].copy()
         
         if df_suspects.empty:
             logger.warning("No se han detectado discrepancias iniciales.")
@@ -61,7 +61,7 @@ class FraudDetector:
         
         # Transformamos el score para que sea intuitivo (0 a 1, donde 1 es fraude seguro)
         # Invertimos y normalizamos el score de decisión
-        df_suspects[DataSchema.CONFIDENCE] = 1 - (scores - scores.min()) / (scores.max() - scores.min() + 1e-6)
+        df_suspects[DatasetKeys.CONFIDENCE] = 1 - (scores - scores.min()) / (scores.max() - scores.min() + 1e-6)
 
         logger.info("Pipeline de detección finalizado.")
-        return df_suspects.sort_values(by=DataSchema.CONFIDENCE, ascending=False)
+        return df_suspects.sort_values(by=DatasetKeys.CONFIDENCE, ascending=False)

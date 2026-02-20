@@ -1,16 +1,21 @@
-class DataSchema:
+class DatasetKeys:
     # --- Columnas originales ---
-    ID_CONTADOR = "ID_Contador"
-    TIMESTAMP = "Timestamp"
-    CONSUMO = "Consumo_m3"
-    CONTRATO = "Tipo_Contrato" 
+    BARRIO          = "barrio"
+    FECHA           = "fecha"
+    CONSUMO         = "consumo"
+    NUM_CONTRATOS   = "num_contratos"
+    USO             = "uso"
+
+    # --- OneHot Encoding ---    
+    USO_COMERCIAL = USO + "_COMERCIAL"
+    USO_DOMESTICO = USO + "_DOMESTICO"
+    USO_NO_DOMESTICO = USO + "_NO DOMESTICO"
 
     # --- Columnas calculadas (Features) ---
-    HORA = "Hora"
+    CONTRATO_RATIO = "consumo_ratio"
+
     ES_FINDE = "es_finde"
-    RATIO_WEEKEND = "ratio_wk"
-    MEAN_CONSUMO = "mean"
-    STD_CONSUMO = "std"
+    MES = "mes"
     
     # --- Columnas de salida de modelos ---
     CLUSTER = "cluster"
@@ -18,9 +23,11 @@ class DataSchema:
     STATUS = "detect_status"
     CONFIDENCE = "confidence_score"
 
+
     @classmethod
     def get_feature_columns(cls):
         return [f"H{i}" for i in range(24)] + [cls.RATIO_WEEKEND, cls.MEAN_CONSUMO, cls.STD_CONSUMO]
+
 
 class BusinessLabels:
     """Etiquetas asignadas por el Labeler (Fase 2)"""
@@ -35,3 +42,5 @@ class FraudStatus:
     ALERTA_TECNICA = "ALERTA_TECNICA"
     CONTRATO_DOMESTICO = "Doméstico"
     OK = "OK"
+
+

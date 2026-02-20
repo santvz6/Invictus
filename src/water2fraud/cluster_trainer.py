@@ -4,7 +4,7 @@ import pandas as pd
 import seaborn as sns
 import matplotlib.pyplot as plt
 
-from src.config import get_logger, DataSchema
+from src.config import get_logger, DatasetKeys
 from src.water2fraud.models.water_segmenter import WaterSegmenter
 from src.water2fraud.features.preprocessor import WaterPreprocessor
 
@@ -35,7 +35,7 @@ class WaterClusterTrainer:
         # 3. Asignación de Clusters
         labels = self.model.predict(self.data_processed)
         self.results = self.data_processed.copy()
-        self.results[DataSchema.CLUSTER] = labels
+        self.results[DatasetKeys.CLUSTER] = labels
         
         logger.info("Pipeline finalizado con éxito.")
         return self.results
@@ -58,7 +58,7 @@ class WaterClusterTrainer:
 
     def _plot_centroids_heatmap(self, centroids, path):
         """Heatmap legible con etiquetas del Schema"""
-        df_centroids = pd.DataFrame(centroids, columns=DataSchema.get_feature_columns())
+        df_centroids = pd.DataFrame(centroids, columns=DatasetKeys.get_feature_columns())
         
         plt.figure(figsize=(16, 6))
         sns.heatmap(df_centroids, annot=True, fmt=".3f", cmap="YlGnBu", robust=True)
@@ -74,8 +74,8 @@ class WaterClusterTrainer:
         plt.figure(figsize=(10, 7))
         
         # Graficamos Consumo Medio vs Ratio Fin de Semana
-        sns.scatterplot(data=self.results, x=DataSchema.MEAN_CONSUMO, y=DataSchema.RATIO_WEEKEND, 
-                        hue=DataSchema.CLUSTER, palette="viridis", alpha=0.6, edgecolor="w", s=100
+        sns.scatterplot(data=self.results, x=DatasetKeys.MEAN_CONSUMO, y=DatasetKeys.RATIO_WEEKEND, 
+                        hue=DatasetKeys.CLUSTER, palette="viridis", alpha=0.6, edgecolor="w", s=100
         )
         
         plt.title("Segmentación de Usuarios: Volumen vs Estacionalidad")

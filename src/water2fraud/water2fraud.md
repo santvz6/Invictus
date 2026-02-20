@@ -1,11 +1,13 @@
 # Water2Fraud - Detección de fraudes y anomalías
 
 ## Introducción
-Seguramente estemos ante un problema con datos sin etiquetar (aprendizaje no supervisado). Tendríamos que utilizar datos como:
-- Consumos brutos
-- Tipos de contrato (doméstico/industrial)
-- Ubicación
-- Tipo de Vivienda (dimensiones u otros datos).
+Los datos con los que trabajaremos incluyen la siguiente información:
+
+- Barrio
+- Uso
+- Fecha (aaaa/mm/dd)
+- Consumo (litros)
+- Nº Contratos
 
 
 ## Pipeline

@@ -1,4 +1,4 @@
-from src.config import get_logger, BusinessLabels, DataSchema
+from src.config import get_logger, BusinessLabels, DatasetKeys
 import numpy as np
 
 logger = get_logger(__name__)
@@ -30,9 +30,9 @@ class WaterLabeler:
         
         # Mapeo de índices para no depender del orden
         idxs_hourly : list[int] = [feature_names.index(f"H{i}") for i in range(24)]
-        idx_wk      : int = feature_names.index(DataSchema.RATIO_WEEKEND)
-        idx_std     : int = feature_names.index(DataSchema.STD_CONSUMO)
-        idx_mean    : int = feature_names.index(DataSchema.MEAN_CONSUMO)
+        idx_wk      : int = feature_names.index(DatasetKeys.RATIO_WEEKEND)
+        idx_std     : int = feature_names.index(DatasetKeys.STD_CONSUMO)
+        idx_mean    : int = feature_names.index(DatasetKeys.MEAN_CONSUMO)
 
         for i, center in enumerate(centroids):
             hourly_ratios  : list[float] = center[idxs_hourly] # 1 x 27

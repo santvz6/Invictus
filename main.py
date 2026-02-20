@@ -7,7 +7,7 @@ from src.water2fraud.models.water_segmenter import WaterSegmenter
 from src.water2fraud.cluster_trainer import WaterClusterTrainer
 from src.water2fraud.models.labeler import WaterLabeler
 from src.water2fraud.models.fraud_detector import FraudDetector
-from src.config import get_logger, Paths, DataSchema, AIConstants
+from src.config import get_logger, Paths, DatasetKeys, AIConstants
 
 Paths.init_project()
 logger = get_logger(__name__)
@@ -45,32 +45,32 @@ class WaterApp:
     def _phase_2_labeling(results, trainer):
         logger.info("--- FASE 2: Etiquetado de Perfiles ---")
         centroides = trainer.model.get_centroids()
-        feature_names: list[str] = DataSchema.get_feature_columns()
+        feature_names: list[str] = DatasetKeys.get_feature_columns()
         
         cluster_labels_map: dict[str, str] = WaterLabeler.define_labels(centroides, feature_names)
-        results[DataSchema.ETIQUETA_IA] = results[DataSchema.CLUSTER].astype(str).map(cluster_labels_map)
+        results[DatasetKeys.ETIQUETA_IA] = results[DatasetKeys.CLUSTER].astype(str).map(cluster_labels_map)
         return results
 
     @staticmethod
     def _phase_3_4_detection(results, df_raw):
         logger.info("--- FASE 3 y 4: Detección de Fraude ---")
-        df_contratos = df_raw.groupby(DataSchema.ID_CONTADOR)[DataSchema.CONTRATO].first() # Agrupamos los mismos ID en un contrato
-        results = results.join(df_contratos, on=DataSchema.ID_CONTADOR) # añadimos la columna del contrato para cada ID
+        df_contratos = df_raw.groupby(DatasetKeys.ID_CONTADOR)[DatasetKeys.CONTRATO].first() # Agrupamos los mismos ID en un contrato
+        results = results.join(df_contratos, on=DatasetKeys.ID_CONTADOR) # añadimos la columna del contrato para cada ID
         
         detector = FraudDetector(contamination=AIConstants.ISO_FOREST_CONTAMINATION)
-        feature_names: list[str] = DataSchema.get_feature_columns()
+        feature_names: list[str] = DatasetKeys.get_feature_columns()
         
         return detector.run_detection_pipeline(
             df_results=results,
-            col_label_ia=DataSchema.ETIQUETA_IA,
-            col_contrato=DataSchema.CONTRATO,
+            col_label_ia=DatasetKeys.ETIQUETA_IA,
+            col_contrato=DatasetKeys.CONTRATO,
             feature_cols=feature_names
         )
     
     @staticmethod
     def _load_data():
         """Carga el dataset bruto y valida su existencia"""
-        input_path = Paths.DATA / "lecturas.csv"
+        input_path = Paths.DATA / "AMAEM.csv"
         
         if not input_path.exists():
             logger.error(f"Error crítico: No se encuentra el archivo en {input_path}")
@@ -99,7 +99,7 @@ class WaterApp:
         print(f"{'='*50}")
         
         print("\nTOP 5 SOSPECHOSOS (PRIORIDAD ALTA):")
-        cols_to_show = [DataSchema.STATUS, DataSchema.CONFIDENCE]
+        cols_to_show = [DatasetKeys.STATUS, DatasetKeys.CONFIDENCE]
         print(df_fraudes[cols_to_show].head(5))
 
 def main():
