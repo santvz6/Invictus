@@ -1,5 +1,6 @@
 # PyTorch Core
---extra-index-url https://download.pytorch.org/whl/cu121
+torch
+torchvision
 
 scikit-learn==1.8.0
 
