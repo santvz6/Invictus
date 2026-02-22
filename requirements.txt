@@ -8,6 +8,12 @@ pandas
 matplotlib
 seaborn
 
+# Para evitar conflictos de github en los .ipynb 
+nbstripout
+# una vez instalado ejecutamos (en la terminal):
+# nbstripout --install
+
+
 
 # VERSIONES ESPECÍFICAS
 

@@ -5,9 +5,13 @@ venv/
 
 # Ejecuciones locales
 **/temp/
-**logs/
+**/logs/
 **/experiments
 
 # Datos Sensibles
 **/data/
 notebooks/**/*.png
+
+# Notebooks
+.ipynb_checkpoints/
+**/.ipynb_checkpoints/
