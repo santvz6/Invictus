@@ -1,7 +1,7 @@
 venv/
 .venv/
 
-**/pycache/**
+**/pycache/
 
 # Ejecuciones locales
 **/temp/
