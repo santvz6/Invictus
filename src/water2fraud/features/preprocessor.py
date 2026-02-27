@@ -39,10 +39,28 @@ class WaterPreprocessor:
         logger.info(f"Matriz generada con éxito. Dimensiones: {X.shape}")
         return X
     
+
+    @staticmethod
+    def _process_NaN(df):
+        return df.copy().dropna()
+    
+    @staticmethod
+    def _rename_df(df):
+        return df.copy().rename(columns={
+            "Barrio": DatasetKeys.BARRIO, 
+            "Uso": DatasetKeys.USO, 
+            "Fecha (aaaa/mm/dd)": DatasetKeys.FECHA,
+            "Consumo (litros)": DatasetKeys.CONSUMO,
+            "Nº Contratos" : DatasetKeys.NUM_CONTRATOS
+        })
+
     @staticmethod
     def _process_dataframe(df):
         """"""
         df = df.copy()
+
+        df = WaterPreprocessor._rename_df(df)
+        df = WaterPreprocessor._process_NaN(df)
 
         # StrToInt
         for key in [DatasetKeys.CONSUMO, DatasetKeys.NUM_CONTRATOS]:

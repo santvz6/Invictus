@@ -1,11 +1,11 @@
 # Gestión Inteligente de la Huella Hídrica Turística: Detección de Consumos Anómalos y Reutilización Predictiva de Agua.
 
 ## 0. Preparación y Alineación del Equipo
-- [ ] **Acceso y Permisos:** Todos los integrantes tienen acceso al repositorio de GitHub y permisos de escritura.
-- [ ] **Workflow de Git:** Establecer reglas de ramas (ej. `main` para entregas, `dev` para integración, y ramas por tarea para cada perfil).
-- [ ] **Entorno de Desarrollo (Setup):** 
-    - [ ] Creación de un entorno virtual común (`venv` o `conda`).
-    - [ ] Archivo `requirements.txt` con librerías base: `pandas`, `numpy`, `networkx`, `scikit-learn` y `matplotlib`.
+- [x] **Acceso y Permisos:** Todos los integrantes tienen acceso al repositorio de GitHub y permisos de escritura.
+- [x] **Workflow de Git:** Establecer reglas de ramas (ej. `main` para entregas, `dev` para integración, y ramas por tarea para cada perfil).
+- [x] **Entorno de Desarrollo (Setup):** 
+    - [x] Creación de un entorno virtual común (`venv` o `conda`).
+    - [x] Archivo `requirements.txt` con librerías base: `pandas`, `numpy`, `networkx`, `scikit-learn` y `matplotlib`.
 - [ ] **Sincronización Interdisciplinar:**
     - [ ] **Físicos:** Definir las leyes de conservación o variables de contorno (aislamiento de Tabarca).
     - [ ] **Informáticos:** Estructurar la arquitectura del Grafo (Nodos = Barrios, Aristas = Proximidad/Similitud).
