@@ -11,17 +11,19 @@ class Paths:
     SRC = ROOT / "src"
     INTERNAL = ROOT / "internal"
    
-    DATA = INTERNAL / "data"   
-    EXPERIMENTS = INTERNAL / "experiments"
+    DATA_DIR = INTERNAL / "data"   
+    EXPERIMENTS_DIR = INTERNAL / "experiments"
     LOGS_DIR = INTERNAL / "logs"
     TEMP_DIR = INTERNAL / "temp"
+    PROCESSED_DIR = INTERNAL / "processed" 
+
 
 
     @classmethod
     def init_project(cls):
         dirs = [
             cls.INTERNAL,
-            cls.DATA,  cls.EXPERIMENTS, cls.LOGS_DIR, cls.TEMP_DIR,
+            cls.DATA_DIR,  cls.EXPERIMENTS_DIR, cls.LOGS_DIR, cls.TEMP_DIR, cls.PROCESSED_DIR
         ]
         for d in dirs:
             d.mkdir(parents=True, exist_ok=True)

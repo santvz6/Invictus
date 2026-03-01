@@ -70,7 +70,7 @@ class WaterApp:
     @staticmethod
     def _load_data():
         """Carga el dataset bruto y valida su existencia"""
-        input_path = Paths.DATA / "AMAEM.csv"
+        input_path = Paths.DATA_DIR / "AMAEM.csv"
         
         if not input_path.exists():
             logger.error(f"Error crítico: No se encuentra el archivo en {input_path}")
@@ -84,7 +84,7 @@ class WaterApp:
         """Gestiona la persistencia de resultados y artefactos visuales"""
 
         timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
-        folder_path = Paths.EXPERIMENTS / timestamp
+        folder_path = Paths.EXPERIMENTS_DIR / timestamp
         folder_path.mkdir(parents=True, exist_ok=True)
         
         csv_name = "deteccion_fraude_final.csv"
