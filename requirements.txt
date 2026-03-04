@@ -16,6 +16,7 @@ nbstripout
 osmnx
 thefuzz
 shapely
+geopy
 
 # VERSIONES ESPECÍFICAS
 # 
