@@ -1,13 +1,19 @@
 venv/
 .venv/
 
-**/pycache/**
+**/__pycache__/
 
 # Ejecuciones locales
 **/temp/
-**logs/
+**/logs/
 **/experiments
+**/processed/
 
 # Datos Sensibles
 **/data/
 notebooks/**/*.png
+
+# Notebooks
+.ipynb_checkpoints/
+**/.ipynb_checkpoints/
+**/cache/

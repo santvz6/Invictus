@@ -13,20 +13,14 @@ class DatasetKeys:
 
     # --- Columnas calculadas (Features) ---
     CONTRATO_RATIO = "consumo_ratio"
-
     ES_FINDE = "es_finde"
     MES = "mes"
     
     # --- Columnas de salida de modelos ---
-    CLUSTER = "cluster"
-    ETIQUETA_IA = "etiqueta_ia"
-    STATUS = "detect_status"
-    CONFIDENCE = "confidence_score"
-
-
-    @classmethod
-    def get_feature_columns(cls):
-        return [f"H{i}" for i in range(24)] + [cls.RATIO_WEEKEND, cls.MEAN_CONSUMO, cls.STD_CONSUMO]
+    #CLUSTER = "cluster"
+    #ETIQUETA_IA = "etiqueta_ia"
+    #STATUS = "detect_status"
+    #CONFIDENCE = "confidence_score"
 
 
 class BusinessLabels:
