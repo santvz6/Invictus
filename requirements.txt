@@ -8,6 +8,11 @@ pandas
 matplotlib
 seaborn
 
+# TimeSeries
+tslearn
+h5py
+
+
 # Para evitar conflictos de github en los .ipynb 
 nbstripout
 # una vez instalado ejecutamos (en la terminal):
