@@ -1,0 +1,6 @@
+*.ipynb filter=nbstripout
+*.zpln filter=nbstripout
+*.ipynb diff=ipynb
+
+# Limpiamos la Metadata del Kernel
+# git config filter.nbstripout.clean "nbstripout --extra-keys 'metadata.kernelspec metadata.language_info.version'"

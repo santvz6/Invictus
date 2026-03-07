@@ -13,10 +13,14 @@ nbstripout
 # una vez instalado ejecutamos (en la terminal):
 # nbstripout --install
 
+# Manual Map
 osmnx
 thefuzz
 shapely
 geopy
+
+# Json Map
+plotly
 
 # VERSIONES ESPECÍFICAS
 # 
