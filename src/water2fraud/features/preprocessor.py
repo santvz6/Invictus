@@ -35,30 +35,31 @@ class WaterPreprocessor:
         logger.info(f"Generando secuencias temporales de tamaño {sequence_length} meses...")
         
         # Ordenamos cronológicamente
-        df = df.sort_values(by=[DatasetKeys.BARRIO, DatasetKeys.FECHA])
+        df = df.sort_values(by=[DatasetKeys.BARRIO, DatasetKeys.USO, DatasetKeys.FECHA])
         
         # Seleccionamos las features que irán a la red neuronal
         feature_cols = [
             DatasetKeys.CONTRATO_RATIO,
             DatasetKeys.MES,
-            # Aquí irían tus variables físicas / AEMET añadidas previamente al DF:
-            # DatasetKeys.CONSUMO_FISICO_ESPERADO, 
-            # 'temperatura_media', 'precipitacion', etc.
+            # TODO: variables físicas / AEMET añadidas previamente al DF:
+            # TODO: DatasetKeys.CONSUMO_FISICO_ESPERADO, 
+            # TODO: 'temperatura_media', 'precipitacion', etc.
         ]
         
         # Asegurar que existan las columnas OHE, si no, rellenar con 0
-        feature_cols = [DatasetKeys.USO_DOMESTICO, DatasetKeys.USO_COMERCIAL, DatasetKeys.USO_NO_DOMESTICO]
-        for col in feature_cols:
+        ohe_cols = [DatasetKeys.USO_DOMESTICO, DatasetKeys.USO_COMERCIAL, DatasetKeys.USO_NO_DOMESTICO]
+        for col in ohe_cols:
             if col not in df.columns:
-                # TODO: Mensaje
-                raise ValueError("")
+                raise ValueError(f"No se ha aplicado One Hot Encoding | Columnas df: {df.columns}")
         
+        feature_cols.extend(ohe_cols)
+
         sequences = []
         metadata = [] # Guardaremos a quién pertenece cada secuencia para identificar anomalías luego
         
-        # Agrupamos por Barrio (y por tipo de uso si no hemos hecho variables unificadas)
-        # Asumiendo que queremos una serie por cada par (Barrio, Uso)
-        for barrio_id, group in df.groupby([DatasetKeys.BARRIO]):
+        # Agrupamos por Barrio y por tipo de USO
+        # Queremos una serie por cada par (Barrio, Uso)
+        for (barrio, uso), group in df.groupby([DatasetKeys.BARRIO, DatasetKeys.USO]):
             group_data = group[feature_cols].values
             
             # Ventana deslizante
@@ -69,6 +70,7 @@ class WaterPreprocessor:
                 last_row = group.iloc[i + sequence_length - 1]
                 metadata.append({
                     DatasetKeys.BARRIO: last_row[DatasetKeys.BARRIO],
+                    DatasetKeys.USO: last_row[DatasetKeys.USO],
                     DatasetKeys.FECHA: last_row[DatasetKeys.FECHA]
                 })
                 
@@ -80,6 +82,22 @@ class WaterPreprocessor:
     
 
     ########################################### DATAFRAME PROCESSING
+    @staticmethod
+    def _scale_features(df: pd.DataFrame) -> pd.DataFrame:
+        from sklearn.preprocessing import MinMaxScaler
+        """
+        Escala las variables numéricas continuas al rango [0, 1] para evitar 
+        la saturación de gradientes en la red neuronal LSTM.
+        """
+        df = df.copy()
+        scaler = MinMaxScaler()
+        
+        # Aquí añadiremos en el futuro la temperatura, precipitaciones, consumo físico, etc.
+        cols_to_scale = [DatasetKeys.CONTRATO_RATIO] 
+        
+        df[cols_to_scale] = scaler.fit_transform(df[cols_to_scale])
+        return df
+    
     @staticmethod
     def _rename_df(df: pd.DataFrame) -> pd.DataFrame:
         """Estandariza los nombres de las columnas basándose en las constantes de DatasetKeys."""
@@ -133,6 +151,7 @@ class WaterPreprocessor:
         df = WaterPreprocessor._rename_df(df)
         df = WaterPreprocessor._process_NaN(df)
         df = WaterPreprocessor._convert_dtype(df)
+        df = WaterPreprocessor._scale_features(df)
         df = WaterPreprocessor._one_hot_encoding(df)
         WaterPreprocessor._save_processed_df(df)
         return df
