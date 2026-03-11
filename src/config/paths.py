@@ -14,38 +14,50 @@ class Paths:
     EXPERIMENTS_DIR = INTERNAL / "experiments"
     LOGS_DIR = INTERNAL / "logs"
     TEMP_DIR = INTERNAL / "temp"
-    PROCESSED_DIR = INTERNAL / "processed"
-    DATA_DIR = INTERNAL / "data"
     
-    # CSV
-    CSV_DIR = DATA_DIR / "csv"
-    CSV_AMAEM = CSV_DIR / "AMAEM-2022-2024.csv"
-    CSV_TELELECTURA = CSV_DIR / "contadores-telelectura-instalados.csv"
 
-    # JSON
-    JSON_DIR                        = DATA_DIR / "json"
-    JSON_BOCAS_HIDRANTES            = JSON_DIR / "bocas-de-hidrantes.json"
-    JSON_CENTROS_BOMBEO             = JSON_DIR / "centros-de-bombeo.json"
-    JSON_DEPOSITOS                  = JSON_DIR / "depositos.json"
-    JSON_ENTIDADES_POBLACION        = JSON_DIR / "entidades-de-poblacion.json"
-    JSON_FUENTES                    = JSON_DIR / "fuentes.json"
-    JSON_GRANDES_COLECTORES         = JSON_DIR / "grandes-colectores.json"
-    JSON_IMBORNALES_GRAN            = JSON_DIR / "imbornales-de-gran-capacidad.json"
-    JSON_IMBORNALES                 = JSON_DIR / "imbornales.json"
-    JSON_PLUVIOMETROS               = JSON_DIR / "pluviometros.json"
-    JSON_REDES_ARTERIALES           = JSON_DIR / "redes-arteriales.json"
-    JSON_REDES_PRIMARIAS            = JSON_DIR / "redes-primarias.json"
-    JSON_SECTORES_CONSUMO           = JSON_DIR / "sectores-de-consumo.json"
-    JSON_TUBERIAS_REGENERADA        = JSON_DIR / "tuberias-agua-regenerada.json"
-    JSON_TUBERIAS_ALCANTARILLADO    = JSON_DIR / "tuberias-de-alcantarillado-y-pluviales.json"
-    JSON_ZONAS_VERDES               = JSON_DIR / "zonas-verdes.json"
+    ### --- Estructura de Datos Base --- ###
+    DATA_DIR = INTERNAL / "data"
+    PROC_DIR = DATA_DIR / "processed"
+    RAW_DIR = DATA_DIR / "raw"
+    
+    ## --- RAW --- ##
+    RAW_CSV_DIR = RAW_DIR / "csv"
+    RAW_JSON_DIR = RAW_DIR / "json"
+    # --- CSV --- #
+    RAW_CSV_AMAEM = RAW_CSV_DIR / "AMAEM-2022-2024.csv"
+    RAW_CSV_TELELECTURA = RAW_CSV_DIR / "contadores-telelectura-instalados.csv"
+    # ... (el resto de los CSVs) ...
+    # ----  JSON --- #
+    RAW_JSON_BOCAS_HIDRANTES         = RAW_JSON_DIR / "bocas-de-hidrantes.json"
+    RAW_JSON_CENTROS_BOMBEO          = RAW_JSON_DIR / "centros-de-bombeo.json"
+    RAW_JSON_DEPOSITOS               = RAW_JSON_DIR / "depositos.json"
+    RAW_JSON_ENTIDADES_POBLACION     = RAW_JSON_DIR / "entidades-de-poblacion.json"
+    RAW_JSON_FUENTES                 = RAW_JSON_DIR / "fuentes.json"
+    RAW_JSON_GRANDES_COLECTORES      = RAW_JSON_DIR / "grandes-colectores.json"
+    RAW_JSON_IMBORNALES_GRAN         = RAW_JSON_DIR / "imbornales-de-gran-capacidad.json"
+    RAW_JSON_IMBORNALES              = RAW_JSON_DIR / "imbornales.json"
+    RAW_JSON_PLUVIOMETROS            = RAW_JSON_DIR / "pluviometros.json"
+    RAW_JSON_REDES_ARTERIALES        = RAW_JSON_DIR / "redes-arteriales.json"
+    RAW_JSON_REDES_PRIMARIAS         = RAW_JSON_DIR / "redes-primarias.json"
+    RAW_JSON_SECTORES_CONSUMO        = RAW_JSON_DIR / "sectores-de-consumo.json"
+    RAW_JSON_TUBERIAS_REGENERADA     = RAW_JSON_DIR / "tuberias-agua-regenerada.json"
+    RAW_JSON_TUBERIAS_ALCANTARILLADO = RAW_JSON_DIR / "tuberias-de-alcantarillado-y-pluviales.json"
+    RAW_JSON_ZONAS_VERDES            = RAW_JSON_DIR / "zonas-verdes.json"
+
+    ## --- PROCESSED --- ##
+    PROC_CSV_DIR = PROC_DIR / "csv"
+    PROC_JSON_DIR = PROC_DIR / "json"
+    # --- CSV --- #
+    PROC_CSV_AMAEM = PROC_CSV_DIR / "AMAEM-2022-2024.csv"
 
 
     @classmethod
     def init_project(cls):
         dirs = [
             cls.INTERNAL,
-            cls.DATA_DIR,  cls.EXPERIMENTS_DIR, cls.LOGS_DIR, cls.TEMP_DIR, cls.PROCESSED_DIR
+            cls.DATA_DIR,  cls.EXPERIMENTS_DIR, cls.LOGS_DIR, cls.TEMP_DIR, 
+            cls.PROC_DIR, cls.PROC_CSV_DIR, cls.PROC_JSON_DIR
         ]
         for d in dirs:
             d.mkdir(parents=True, exist_ok=True)
