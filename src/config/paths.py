@@ -20,6 +20,7 @@ class Paths:
     DATA_DIR = INTERNAL / "data"
     PROC_DIR = DATA_DIR / "processed"
     RAW_DIR = DATA_DIR / "raw"
+    EXT_DIR = DATA_DIR / "external"
     
     ## --- RAW --- ##
     RAW_CSV_DIR = RAW_DIR / "csv"
@@ -50,6 +51,21 @@ class Paths:
     PROC_JSON_DIR = PROC_DIR / "json"
     # --- CSV --- #
     PROC_CSV_AMAEM = PROC_CSV_DIR / "AMAEM-2022-2024.csv"
+
+    ## --- EXTERNAL --- ##
+
+    # --- GVA --- #
+    GVA_DIR = EXT_DIR / "gva"
+
+    # --- INE --- #
+    INE_DIR = EXT_DIR / "ine"
+
+    INE_COMUNIDAD_TIPO_ALOJ = INE_DIR / "comunidad-info-tipo-aloj.csv"
+    INE_COMUNIDAD_TOTAL     = INE_DIR / "comunidad-info-total.csv"
+    INE_MUNICIPIOS_PLAZAS   = INE_DIR / "municipios-plazas-vt.csv"
+    INE_MUNICIPIOS_PORCENT  = INE_DIR / "municipios-porcentaje-vt.csv"
+    INE_PROVINCIA_HOTEL     = INE_DIR / "provincia-info-hotel.csv"
+    INE_PROVINCIA_VT        = INE_DIR / "provincia-info-vt.csv"
 
 
     @classmethod
