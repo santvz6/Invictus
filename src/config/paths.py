@@ -56,6 +56,8 @@ class Paths:
 
     # --- GVA --- #
     GVA_DIR = EXT_DIR / "gva"
+    GVA_VIVIENDAS = GVA_DIR / "m-viviendas-2022-2025.csv"
+    GVA_HOTELES   = GVA_DIR / "m-hoteles-2022-2026.csv"
 
     # --- INE --- #
     INE_DIR = EXT_DIR / "ine"
