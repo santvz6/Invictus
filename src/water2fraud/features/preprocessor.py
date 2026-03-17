@@ -1,6 +1,7 @@
 import numpy as np
 import pandas as pd
 
+from src.water2fraud.features.ine_tourism_processor import INETourismProcessor
 from src.config import get_logger, DatasetKeys, Paths
 logger = get_logger(__name__)
 
@@ -41,6 +42,10 @@ class WaterPreprocessor:
         feature_cols = [
             DatasetKeys.CONTRATO_RATIO,
             DatasetKeys.MES,
+            DatasetKeys.NUM_VT_BARRIO,     
+            DatasetKeys.PCT_TURISTICO_REAL,
+            DatasetKeys.OCUPACIONES_VT,    
+            DatasetKeys.PERNOCTACIONES_VT  
             # TODO: variables físicas / AEMET añadidas previamente al DF:
             # TODO: DatasetKeys.CONSUMO_FISICO_ESPERADO, 
             # TODO: 'temperatura_media', 'precipitacion', etc.
@@ -93,9 +98,22 @@ class WaterPreprocessor:
         scaler = MinMaxScaler()
         
         # Aquí añadiremos en el futuro la temperatura, precipitaciones, consumo físico, etc.
-        cols_to_scale = [DatasetKeys.CONTRATO_RATIO] 
+        # ? Realmente queremos MinMaxScaler para todos los features 
+        # ? o para algunos es mejor StandardScaler
+        cols_to_scale = [
+            DatasetKeys.CONTRATO_RATIO,
+            DatasetKeys.NUM_VT_BARRIO,
+            DatasetKeys.PCT_TURISTICO_REAL,
+            DatasetKeys.OCUPACIONES_VT,
+            DatasetKeys.PERNOCTACIONES_VT
+        ]
         
-        df[cols_to_scale] = scaler.fit_transform(df[cols_to_scale])
+        # Filtramos por seguridad
+        cols_present = [c for c in cols_to_scale if c in df.columns]
+        
+        if cols_present:
+            df[cols_present] = scaler.fit_transform(df[cols_present])
+            
         return df
     
     @staticmethod
@@ -148,10 +166,18 @@ class WaterPreprocessor:
     def process_raw_data(df: pd.DataFrame) -> pd.DataFrame:
         """Pipeline principal de limpieza que orquesta los pasos de preprocesamiento de un DataFrame crudo."""
         df = df.copy()
+        
+        # AMAEM
         df = WaterPreprocessor._rename_df(df)
         df = WaterPreprocessor._process_NaN(df)
         df = WaterPreprocessor._convert_dtype(df)
-        df = WaterPreprocessor._scale_features(df)
         df = WaterPreprocessor._one_hot_encoding(df)
-        WaterPreprocessor._save_processed_df(df)
+        
+        # INE Tourism
+        df = INETourismProcessor.enrich_with_tourism_data(df)
+        df_scaled = WaterPreprocessor._scale_features(df)
+        
+
+        WaterPreprocessor._save_processed_df(df_scaled)
+        df.to_csv(Paths.PROC_CSV_DIR / "not_scaled.csv", index=False)
         return df
