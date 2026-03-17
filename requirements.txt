@@ -27,6 +27,9 @@ geopy
 # Json Map
 plotly
 
+# YAML
+pyyaml
+
 # VERSIONES ESPECÍFICAS
 # 
 # torch==2.5.1+cu121

@@ -21,6 +21,11 @@ class Paths:
     PROC_DIR = DATA_DIR / "processed"
     RAW_DIR = DATA_DIR / "raw"
     EXT_DIR = DATA_DIR / "external"
+    CONFIG_DIR = DATA_DIR / "config"
+
+    ## --- CONFIG ---
+    MAPPING_BARRIOS = CONFIG_DIR / "mapping_barrios.csv"
+    MAPPING_BARRIOS_YAML = CONFIG_DIR / "mapping_barrios.yaml"
     
     ## --- RAW --- ##
     RAW_CSV_DIR = RAW_DIR / "csv"
@@ -75,6 +80,7 @@ class Paths:
         dirs = [
             cls.INTERNAL,
             cls.DATA_DIR,  cls.EXPERIMENTS_DIR, cls.LOGS_DIR, cls.TEMP_DIR, 
+            cls.CONFIG_DIR,
             cls.PROC_DIR, cls.PROC_CSV_DIR, cls.PROC_JSON_DIR
         ]
         for d in dirs:
