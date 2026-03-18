@@ -4,3 +4,5 @@
 
 # Limpiamos la Metadata del Kernel
 # git config filter.nbstripout.clean "nbstripout --extra-keys 'metadata.kernelspec metadata.language_info.version'"
+# git config filter.nbstripout.clean "C:/Users/77422/Desktop/INVICTUS/venv/Scripts/nbstripout.exe --extra-keys 'metadata.kernelspec metadata.language_info.version'"
+# poner el path para hacer nbstripout exacto.

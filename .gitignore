@@ -1,7 +1,9 @@
 venv/
 .venv/
 
+__pycache__/
 **/__pycache__/
+*.py[cod]
 
 # Ejecuciones locales
 **/temp/
@@ -17,3 +19,6 @@ notebooks/**/*.png
 .ipynb_checkpoints/
 **/.ipynb_checkpoints/
 **/cache/
+
+# Cache Rara
+.vs/

@@ -8,15 +8,29 @@ pandas
 matplotlib
 seaborn
 
+# TimeSeries
+tslearn
+h5py
+
+# Explicabilidad
+shap
+
 # Para evitar conflictos de github en los .ipynb 
 nbstripout
 # una vez instalado ejecutamos (en la terminal):
 # nbstripout --install
 
+# Manual Map
 osmnx
 thefuzz
 shapely
 geopy
+
+# Json Map
+plotly
+
+# YAML
+pyyaml
 
 # VERSIONES ESPECÍFICAS
 # 

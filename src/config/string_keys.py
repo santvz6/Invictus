@@ -13,28 +13,16 @@ class DatasetKeys:
 
     # --- Columnas calculadas (Features) ---
     CONTRATO_RATIO = "consumo_ratio"
-    ES_FINDE = "es_finde"
-    MES = "mes"
     
-    # --- Columnas de salida de modelos ---
-    #CLUSTER = "cluster"
-    #ETIQUETA_IA = "etiqueta_ia"
-    #STATUS = "detect_status"
-    #CONFIDENCE = "confidence_score"
+    MES = "mes"
+    MES_SIN = "mes_sin"
+    MES_COS = "mes_cos"
 
-
-class BusinessLabels:
-    """Etiquetas asignadas por el Labeler (Fase 2)"""
-    TURISTICO = "Turístico"
-    DESOCUPADO = "Desocupado"
-    INDUSTRIAL_FUGA = "Industrial/Fuga"
-    RESIDENCIAL = "Residencial"
-
-class FraudStatus:
-    """Estados resultantes del FraudDetector (Fase 3)"""
-    SOSPECHA_TURISTICO = "SOSPECHA_TURISTICO"
-    ALERTA_TECNICA = "ALERTA_TECNICA"
-    CONTRATO_DOMESTICO = "Doméstico"
-    OK = "OK"
-
-
+    # --- Columnas Externas (Físicos) ---
+    CONSUMO_FISICO_ESPERADO = "consumo_teorico_fisica"
+    
+    # --- Columnas Externas (INE Turismo) ---
+    NUM_VT_BARRIO           = "num_vt_barrio"
+    PCT_VT_BARRIO           = "porcentaje_vt_barrio"
+    OCUPACIONES_VT_PROV     = "ocupaciones_vt_prov"
+    PERNOCTACIONES_VT_PROV  = "pernoctaciones_vt_prov"
