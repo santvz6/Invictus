@@ -13,11 +13,16 @@ class DatasetKeys:
 
     # --- Columnas calculadas (Features) ---
     CONTRATO_RATIO = "consumo_ratio"
+    
     MES = "mes"
+    MES_SIN = "mes_sin"
+    MES_COS = "mes_cos"
+
+    # --- Columnas Externas (Físicos) ---
     CONSUMO_FISICO_ESPERADO = "consumo_teorico_fisica"
     
     # --- Columnas Externas (INE Turismo) ---
-    NUM_VT_BARRIO      = "num_vt_barrio"
-    PCT_TURISTICO_REAL = "porcentaje_turistico_real"
-    OCUPACIONES_VT     = "ocupaciones_vt"
-    PERNOCTACIONES_VT  = "pernoctaciones_vt"
+    NUM_VT_BARRIO           = "num_vt_barrio"
+    PCT_VT_BARRIO           = "porcentaje_vt_barrio"
+    OCUPACIONES_VT_PROV     = "ocupaciones_vt_prov"
+    PERNOCTACIONES_VT_PROV  = "pernoctaciones_vt_prov"

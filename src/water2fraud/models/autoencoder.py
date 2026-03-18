@@ -10,7 +10,7 @@ class LSTMAutoencoder(nn.Module):
     patrones estacionales y detectar anomalías mediante el error de reconstrucción.
     """
 
-    def __init__(self, num_features: int, hidden_dim=64, latent_dim=16, seq_len=12) -> None:
+    def __init__(self, num_features: int, hidden_dim:int, latent_dim:int, seq_len:int) -> None:
         """
         Inicializa la arquitectura del LSTMAutoencoder.
 
@@ -48,7 +48,7 @@ class LSTMAutoencoder(nn.Module):
         # --- Encode ---
         x, _ = self.encoder_lstm1(x)
         x = self.encoder_dropout(x)
-        _, (hidden, _) = self.encoder_lstm2(x)
+        _, (hidden, cell) = self.encoder_lstm2(x)
         
         # hidden shape: (1, batch_size, latent_dim) -> squeeze: (batch_size, latent_dim)
         latent = hidden[-1]

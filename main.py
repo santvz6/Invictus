@@ -58,21 +58,21 @@ class WaterApp:
         # FASE 0: Carga de datos
         df_raw = WaterApp._load_data()
         # FASE 1: Preprocesamiento y Secuenciación (Ventanas de 12 meses)
-        X_sequences, metadata_df = WaterApp._phase_1_preprocessing(df_raw)
+        X_sequences, metadata_df, feature_names = WaterApp._phase_1_preprocessing(df_raw)
         # FASE 2: Clustering Temporal de Series
         labels, cluster_manager = WaterApp._phase_2_clustering(X_sequences)
         metadata_df['cluster'] = labels
         # FASE 3: Entrenamiento de Autoencoders por Clúster
         modelos_entrenados = WaterApp._phase_3_training(X_sequences, metadata_df, device)
         # FASE 4: Detección de Anomalías e Inyección de Reglas Físicas
-        df_resultados = WaterApp._phase_4_detection(X_sequences, metadata_df, modelos_entrenados, device)
+        df_resultados = WaterApp._phase_4_detection(X_sequences, metadata_df, modelos_entrenados, feature_names, device)
         # FASE 5: Guardado de resultados y modelos
         WaterApp._save_results(df_resultados, cluster_manager, modelos_entrenados)
         
         return df_resultados
 
     @staticmethod
-    def _phase_1_preprocessing(df_raw: pd.DataFrame) -> tuple[np.ndarray, pd.DataFrame]:
+    def _phase_1_preprocessing(df_raw: pd.DataFrame) -> tuple[np.ndarray, pd.DataFrame, list[str]]:
         """
         Limpia los datos crudos y genera las secuencias temporales.
 
@@ -83,6 +83,7 @@ class WaterApp:
             tuple:
                 - X_sequences (np.ndarray): Tensor 3D para la red neuronal.
                 - metadata_df (pd.DataFrame): Metadatos asociados a las secuencias.
+                - feature_names (list[str]): Nombres de las variables en el orden de X_sequences
         """
         logger.info("--- FASE 1: Preprocesamiento y Secuencias Temporales ---")
         df_clean = WaterPreprocessor.process_raw_data(df_raw)
@@ -90,8 +91,8 @@ class WaterApp:
         # ! Aquí ya hemos cruzado df_clean con las fórmulas físicas y AEMET 
         # ! antes de crear las secuencias. WaterPreprocessor lo maneja.
         
-        X_sequences, metadata_df = WaterPreprocessor.create_sequences(df_clean, sequence_length=12)
-        return X_sequences, metadata_df
+        X_sequences, metadata_df, feature_names = WaterPreprocessor.create_sequences(df_clean, sequence_length=12)
+        return X_sequences, metadata_df, feature_names
 
     @staticmethod
     def _phase_2_clustering(X_sequences: np.ndarray) -> tuple[np.ndarray, ClusterManager]:
@@ -134,7 +135,7 @@ class WaterApp:
         # Kwargs
         batch_size  = kwargs.get("batch_size", 32)
         hidden_dim  = kwargs.get("hidden_dim", 64)
-        latent_dim  = kwargs.get("latent_dim", 16) 
+        latent_dim  = kwargs.get("latent_dim", 32) # 16
         epochs      = kwargs.get("epochs", 100)
         lr          = kwargs.get("lr", 1e-3)
         plot_graphs = kwargs.get("plot", False)
@@ -167,7 +168,8 @@ class WaterApp:
         return modelos
     
     @staticmethod
-    def _phase_4_detection(X_sequences: np.ndarray, metadata_df: pd.DataFrame, modelos: dict, device: str) -> pd.DataFrame:
+    def _phase_4_detection(X_sequences: np.ndarray, metadata_df: pd.DataFrame, 
+                           modelos: dict, feature_names: list[str], device: str) -> pd.DataFrame:
         """
         Fase de Inferencia y Detección: Evalúa los datos a través de los modelos entrenados
         y aplica las restricciones de las leyes físicas.
@@ -176,6 +178,8 @@ class WaterApp:
             X_sequences (np.ndarray): Tensor 3D con todas las secuencias a evaluar.
             metadata_df (pd.DataFrame): Metadatos de los recibos de agua.
             modelos (dict): Diccionario con los modelos pre-entrenados por clúster.
+            feature_names (list[str], optional): Nombres de las variables en el orden de X_sequences.
+                                                 Si se omite, se usará 'feature_0', 'feature_1', etc.
             device (str): Dispositivo de cómputo ('cpu' o 'cuda').
 
         Returns:
@@ -203,7 +207,8 @@ class WaterApp:
             
             # Detección (Error de reconstrucción + Leyes Físicas)
             # Umbral físico: Si el consumo real supera 1.5x el teórico, es sospechoso
-            df_anomalias = detect_anomalies(model, X_cluster, meta_cluster, physics_threshold=1.5, device=device)
+            df_anomalias = detect_anomalies(model, X_cluster, meta_cluster, 
+                                            feature_names=feature_names, physics_threshold=1.5, device=device)
             resultados_finales.append(df_anomalias)
             
         # Unificar todos los resultados
@@ -297,7 +302,7 @@ def main():
     if args.elbow:
         df_raw = WaterApp._load_data()
         if df_raw is not None:
-            X_sequences, _ = WaterApp._phase_1_preprocessing(df_raw)
+            X_sequences, _, _ = WaterApp._phase_1_preprocessing(df_raw)
             ClusterManager.find_optimal_clusters(X_sequences, max_clusters=10)
             
     elif args.run:

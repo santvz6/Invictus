@@ -41,23 +41,24 @@ class WaterPreprocessor:
         # Seleccionamos las features que irán a la red neuronal
         feature_cols = [
             DatasetKeys.CONTRATO_RATIO,
-            DatasetKeys.MES,
+            DatasetKeys.MES_SIN,
+            DatasetKeys.MES_COS,
             DatasetKeys.NUM_VT_BARRIO,     
-            DatasetKeys.PCT_TURISTICO_REAL,
-            DatasetKeys.OCUPACIONES_VT,    
-            DatasetKeys.PERNOCTACIONES_VT  
+            DatasetKeys.PCT_VT_BARRIO,
+            DatasetKeys.OCUPACIONES_VT_PROV,    
+            DatasetKeys.PERNOCTACIONES_VT_PROV  
             # TODO: variables físicas / AEMET añadidas previamente al DF:
             # TODO: DatasetKeys.CONSUMO_FISICO_ESPERADO, 
             # TODO: 'temperatura_media', 'precipitacion', etc.
         ]
         
         # Asegurar que existan las columnas OHE, si no, rellenar con 0
-        ohe_cols = [DatasetKeys.USO_DOMESTICO, DatasetKeys.USO_COMERCIAL, DatasetKeys.USO_NO_DOMESTICO]
-        for col in ohe_cols:
-            if col not in df.columns:
-                raise ValueError(f"No se ha aplicado One Hot Encoding | Columnas df: {df.columns}")
-        
-        feature_cols.extend(ohe_cols)
+        #ohe_cols = [DatasetKeys.USO_DOMESTICO, DatasetKeys.USO_COMERCIAL, DatasetKeys.USO_NO_DOMESTICO]
+        #for col in ohe_cols:
+        #    if col not in df.columns:
+        #        raise ValueError(f"No se ha aplicado One Hot Encoding | Columnas df: {df.columns}")
+        #
+        #feature_cols.extend(ohe_cols)
 
         sequences = []
         metadata = [] # Guardaremos a quién pertenece cada secuencia para identificar anomalías luego
@@ -83,7 +84,7 @@ class WaterPreprocessor:
         meta_df = pd.DataFrame(metadata)
         
         logger.info(f"Generadas {X.shape[0]} secuencias de forma {X.shape[1]}x{X.shape[2]}")
-        return X, meta_df
+        return X, meta_df, feature_cols
     
 
     ########################################### DATAFRAME PROCESSING
@@ -103,17 +104,21 @@ class WaterPreprocessor:
         cols_to_scale = [
             DatasetKeys.CONTRATO_RATIO,
             DatasetKeys.NUM_VT_BARRIO,
-            DatasetKeys.PCT_TURISTICO_REAL,
-            DatasetKeys.OCUPACIONES_VT,
-            DatasetKeys.PERNOCTACIONES_VT
+            DatasetKeys.PCT_VT_BARRIO,
+            DatasetKeys.OCUPACIONES_VT_PROV,
+            DatasetKeys.PERNOCTACIONES_VT_PROV
         ]
         
         # Filtramos por seguridad
         cols_present = [c for c in cols_to_scale if c in df.columns]
-        
         if cols_present:
             df[cols_present] = scaler.fit_transform(df[cols_present])
-            
+        
+        # Escalado del mes
+        meses = df[DatasetKeys.MES]
+        df[DatasetKeys.MES_SIN] = np.sin(2 * np.pi * meses / 12)
+        df[DatasetKeys.MES_COS] = np.cos(2 * np.pi * meses / 12)
+
         return df
     
     @staticmethod
@@ -177,7 +182,8 @@ class WaterPreprocessor:
         df = INETourismProcessor.enrich_with_tourism_data(df)
         df_scaled = WaterPreprocessor._scale_features(df)
         
-
-        WaterPreprocessor._save_processed_df(df_scaled)
+        # Not Scaled
         df.to_csv(Paths.PROC_CSV_DIR / "not_scaled.csv", index=False)
-        return df
+        # Scaled
+        WaterPreprocessor._save_processed_df(df_scaled)
+        return df_scaled

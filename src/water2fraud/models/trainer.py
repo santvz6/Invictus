@@ -95,7 +95,7 @@ def train_autoencoder(model: nn.Module, dataloader: DataLoader, epochs=100, lr=1
 
 
 def detect_anomalies(model: nn.Module, X_sequences: np.ndarray, metadata_df: pd.DataFrame, 
-                     physics_threshold=1.5, device="cpu") -> pd.DataFrame:
+                     feature_names=None, physics_threshold=1.5, device="cpu") -> pd.DataFrame:
     """
     Evalúa secuencias mediante el Autoencoder y aplica reglas físicas para detectar anomalías.
     
@@ -107,6 +107,8 @@ def detect_anomalies(model: nn.Module, X_sequences: np.ndarray, metadata_df: pd.
         model (nn.Module): Autoencoder LSTM previamente entrenado.
         X_sequences (np.ndarray): Secuencias a evaluar con forma (N, seq_len, num_features).
         metadata_df (pd.DataFrame): Metadatos asociados a las secuencias (Barrio, Fecha, consumos).
+        feature_names (list[str], optional): Nombres de las variables en el orden de X_sequences.
+                                             Si se omite, se usará 'feature_0', 'feature_1', etc.
         physics_threshold (float, optional): Multiplicador del límite físico de consumo teórico. 
                                              Por defecto es 1.5.
         device (str, optional): Dispositivo de cómputo ('cpu' o 'cuda'). Por defecto es 'cpu'.
@@ -123,29 +125,40 @@ def detect_anomalies(model: nn.Module, X_sequences: np.ndarray, metadata_df: pd.
     with torch.no_grad():
         reconstructions = model(X_tensor)
         
-    # Calculamos el error absoluto (MAE) por cada secuencia
-    # Dim 1: seq_len, Dim 2: features
-    errors = torch.mean(torch.abs(reconstructions - X_tensor), dim=(1,2)).cpu().numpy()
+    # 1. ERROR GLOBAL (El que ya tenías)
+    # Calculamos el MAE (Mean Absolute Error) promediando la secuencia (dim=1) y las features (dim=2)
+    global_errors = torch.mean(torch.abs(reconstructions - X_tensor), dim=[1, 2]).cpu().numpy()
+    metadata_df['reconstruction_error'] = global_errors
     
-    # 1. Obtenemos el umbral estadístico del Autoencoder (ej: percentil 95 de error)
-    ae_threshold = np.percentile(errors, 95)
+    # 2. DESGLOSE DE ERROR POR FEATURE
+    # Promediamos solo a lo largo de los 12 meses (dim=1), manteniendo separadas las features
+    feature_errors = torch.mean(torch.abs(reconstructions - X_tensor), dim=1).cpu().numpy()
     
-    results = metadata_df.copy()
-    results['reconstruction_error'] = errors
-    results['is_ae_anomaly'] = errors > ae_threshold
+    # Nombres por defecto si no se los pasas
+    if feature_names is None:
+        feature_names = [f"feature_{i}" for i in range(feature_errors.shape[1])]
+            
+    # Añadimos una columna al DataFrame por cada feature
+    for i, name in enumerate(feature_names):
+        metadata_df[f'error__{name}'] = feature_errors[:, i]
     
-    # 2. POST-PROCESAMIENTO CON LA FÍSICA
+    # LÓGICA DE FLAGS
+    # Ejemplo: Si el error global supera el percentil 95, es anomalía
+    umbral = np.percentile(global_errors, 95)
+    metadata_df['is_ae_anomaly'] = global_errors > umbral
+    
+    # 4. POST-PROCESAMIENTO CON LA FÍSICA
     # Asumimos que tienes el consumo real vs teórico en el metadata_df
     # (Lo habremos cruzado previamente al armar el dataset original)
-    if 'consumo_real' in results.columns and 'consumo_fisico_teorico' in results.columns:
+    if 'consumo_real' in metadata_df.columns and 'consumo_fisico_teorico' in metadata_df.columns:
         
         # Condición Física: ¿Supera la realidad a la teoría por más de X veces?
-        results['is_physics_anomaly'] = results['consumo_real'] > (results['consumo_fisico_teorico'] * physics_threshold)
+        metadata_df['is_physics_anomaly'] = metadata_df['consumo_real'] > (metadata_df['consumo_fisico_teorico'] * physics_threshold)
         
         # ALERTA DE VIVIENDA ILEGAL (Ambos modelos concuerdan)
-        results['ALERTA_TURISTICA_ILEGAL'] = results['is_ae_anomaly'] & results['is_physics_anomaly']
+        metadata_df['ALERTA_TURISTICA_ILEGAL'] = metadata_df['is_ae_anomaly'] & metadata_df['is_physics_anomaly']
         
-    return results
+    return metadata_df
 
 
 # =====================================================================

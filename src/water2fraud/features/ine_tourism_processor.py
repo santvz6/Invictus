@@ -36,7 +36,7 @@ class INETourismProcessor:
         df_final = pd.merge(df_final, df_provincia, on=DatasetKeys.FECHA, how='left')
 
         # Rellenar posibles nulos generados por el cruce con 0
-        cols_ine = [DatasetKeys.NUM_VT_BARRIO, DatasetKeys.PCT_TURISTICO_REAL, DatasetKeys.OCUPACIONES_VT, DatasetKeys.PERNOCTACIONES_VT]
+        cols_ine = [DatasetKeys.NUM_VT_BARRIO, DatasetKeys.PCT_VT_BARRIO, DatasetKeys.OCUPACIONES_VT_PROV, DatasetKeys.PERNOCTACIONES_VT_PROV]
         for col in cols_ine:
             if col in df_final.columns:
                 df_final[col] = df_final[col].fillna(0)
@@ -96,10 +96,10 @@ class INETourismProcessor:
 
         # Merge final con contratos para el porcentaje interpolado
         df_resampled = pd.merge(df_interpolated, df_amaem_dom, on=[DatasetKeys.BARRIO, DatasetKeys.FECHA], how='left')
-        df_resampled[DatasetKeys.PCT_TURISTICO_REAL] = (df_resampled[DatasetKeys.NUM_VT_BARRIO] / df_resampled[DatasetKeys.NUM_CONTRATOS]) * 100
-        df_resampled[DatasetKeys.PCT_TURISTICO_REAL] = df_resampled[DatasetKeys.PCT_TURISTICO_REAL].fillna(0).round(4)
+        df_resampled[DatasetKeys.PCT_VT_BARRIO] = (df_resampled[DatasetKeys.NUM_VT_BARRIO] / df_resampled[DatasetKeys.NUM_CONTRATOS]) * 100
+        df_resampled[DatasetKeys.PCT_VT_BARRIO] = df_resampled[DatasetKeys.PCT_VT_BARRIO].fillna(0).round(4)
 
-        return df_resampled[[DatasetKeys.BARRIO, DatasetKeys.FECHA, DatasetKeys.NUM_VT_BARRIO, DatasetKeys.PCT_TURISTICO_REAL]]
+        return df_resampled[[DatasetKeys.BARRIO, DatasetKeys.FECHA, DatasetKeys.NUM_VT_BARRIO, DatasetKeys.PCT_VT_BARRIO]]
 
     @staticmethod
     def _process_provincia() -> pd.DataFrame:
@@ -116,15 +116,15 @@ class INETourismProcessor:
         
         df_prov = df_prov.rename(columns={
             "fecha": "fecha_orig",
-            "total_numero_de_alojamientos_turisticos_ocupados": DatasetKeys.OCUPACIONES_VT,
-            "numero_de_noches_ocupadas": DatasetKeys.PERNOCTACIONES_VT
+            "total_numero_de_alojamientos_turisticos_ocupados": DatasetKeys.OCUPACIONES_VT_PROV,
+            "numero_de_noches_ocupadas": DatasetKeys.PERNOCTACIONES_VT_PROV
         })
 
         df_prov[DatasetKeys.FECHA] = pd.to_datetime(df_prov['fecha_orig'].str.replace('M', '-')).dt.to_period('M')
-        df_prov_clean = df_prov[[DatasetKeys.FECHA, DatasetKeys.OCUPACIONES_VT, DatasetKeys.PERNOCTACIONES_VT]].copy()
+        df_prov_clean = df_prov[[DatasetKeys.FECHA, DatasetKeys.OCUPACIONES_VT_PROV, DatasetKeys.PERNOCTACIONES_VT_PROV]].copy()
 
         # Limpieza de puntos en miles
-        for col in [DatasetKeys.OCUPACIONES_VT, DatasetKeys.PERNOCTACIONES_VT]:
+        for col in [DatasetKeys.OCUPACIONES_VT_PROV, DatasetKeys.PERNOCTACIONES_VT_PROV]:
             if df_prov_clean[col].dtype == 'object':
                 df_prov_clean[col] = df_prov_clean[col].str.replace('.', '', regex=False).astype(float)
             elif df_prov_clean[col].dtype in ['float64', 'int64']:

@@ -12,6 +12,8 @@ seaborn
 tslearn
 h5py
 
+# Explicabilidad
+shap
 
 # Para evitar conflictos de github en los .ipynb 
 nbstripout
