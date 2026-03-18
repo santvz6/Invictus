@@ -20,6 +20,11 @@ nbstripout
 # una vez instalado ejecutamos (en la terminal):
 # nbstripout --install
 
+# YAML
+pyyaml
+
+# --- Visualización ---
+
 # Manual Map
 osmnx
 thefuzz
@@ -29,8 +34,9 @@ geopy
 # Json Map
 plotly
 
-# YAML
-pyyaml
+# Final Map
+folium
+mapclassify
 
 # VERSIONES ESPECÍFICAS
 # 

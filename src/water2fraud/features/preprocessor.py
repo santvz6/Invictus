@@ -40,7 +40,7 @@ class WaterPreprocessor:
         
         # Seleccionamos las features que irán a la red neuronal
         feature_cols = [
-            DatasetKeys.CONTRATO_RATIO,
+            DatasetKeys.CONSUMO_RATIO,
             DatasetKeys.MES_SIN,
             DatasetKeys.MES_COS,
             DatasetKeys.NUM_VT_BARRIO,     
@@ -102,7 +102,7 @@ class WaterPreprocessor:
         # ? Realmente queremos MinMaxScaler para todos los features 
         # ? o para algunos es mejor StandardScaler
         cols_to_scale = [
-            DatasetKeys.CONTRATO_RATIO,
+            DatasetKeys.CONSUMO_RATIO,
             DatasetKeys.NUM_VT_BARRIO,
             DatasetKeys.PCT_VT_BARRIO,
             DatasetKeys.OCUPACIONES_VT_PROV,
@@ -147,7 +147,7 @@ class WaterPreprocessor:
         # StrToInt
         for key in [DatasetKeys.CONSUMO, DatasetKeys.NUM_CONTRATOS]:
             df[key] = df[key].str.replace(",", "").astype(int)
-        df[DatasetKeys.CONTRATO_RATIO] = df[DatasetKeys.CONSUMO] / df[DatasetKeys.NUM_CONTRATOS]
+        df[DatasetKeys.CONSUMO_RATIO] = df[DatasetKeys.CONSUMO] / df[DatasetKeys.NUM_CONTRATOS]
 
         # StrToDatetime
         df[DatasetKeys.FECHA] = pd.to_datetime(df[DatasetKeys.FECHA], format="%Y/%m/%d")

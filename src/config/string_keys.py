@@ -12,7 +12,7 @@ class DatasetKeys:
     USO_NO_DOMESTICO = USO + "_NO DOMESTICO"
 
     # --- Columnas calculadas (Features) ---
-    CONTRATO_RATIO = "consumo_ratio"
+    CONSUMO_RATIO = "consumo_ratio"
     
     MES = "mes"
     MES_SIN = "mes_sin"
