@@ -13,7 +13,7 @@ class INETourismProcessor:
     """
 
     @staticmethod
-    def enrich_with_tourism_data(df_amaem: pd.DataFrame) -> pd.DataFrame:
+    def process(df_amaem: pd.DataFrame) -> pd.DataFrame:
         """
         Punto de entrada principal. Recibe el dataframe limpio de AMAEM y le inyecta 
         las variables turísticas del INE (Municipios y Provincia).
@@ -47,11 +47,10 @@ class INETourismProcessor:
         logger.info("Enriquecimiento con INE completado con éxito.")
         return df_final
 
+    ######################################################################################
+    #                                        MUNICIPIOS
     @staticmethod
-    def _process_municipios(df_amaem: pd.DataFrame) -> pd.DataFrame:
-        """Procesa datos de viviendas turísticas por municipio y los mapea a barrios."""
-        
-        # 1. MAPPING
+    def _map_mun2barrios():
         df_mun = pd.read_csv(Paths.INE_MUNICIPIOS_PLAZAS, encoding="latin1", sep="\t")
         df_mapping = pd.read_csv(Paths.MAPPING_BARRIOS, sep=";")
         
@@ -72,13 +71,14 @@ class INETourismProcessor:
         df_weighted[DatasetKeys.NUM_VT_BARRIO] = df_weighted['Total_vt_municipio'] * df_weighted['peso']
 
         df_barrio = df_weighted.groupby([DatasetKeys.BARRIO, DatasetKeys.FECHA])[DatasetKeys.NUM_VT_BARRIO].sum().reset_index()
-
-        # 2. PORCENTAJE VIVIENDAS TURÍSTICAS
-        # Extraemos el número de contratos de AMAEM (solo doméstico) para calcular el porcentaje
+        return df_barrio
+    
+    def _merge_domesticos_ine(df_amaem, df_barrio):
         df_amaem_dom = df_amaem[df_amaem[DatasetKeys.USO] == 'DOMESTICO'][[DatasetKeys.BARRIO, DatasetKeys.FECHA, DatasetKeys.NUM_CONTRATOS]]
         df_merge = pd.merge(df_barrio, df_amaem_dom, on=[DatasetKeys.BARRIO, DatasetKeys.FECHA], how='left')
+        return df_amaem_dom, df_merge
 
-        # 3. INTERPOLACIÓN MENSUAL LINEAL
+    def _interpolacion_mensual(df_merge):
         periodo_minimo = df_merge[DatasetKeys.FECHA].min()
         rango_completo = pd.period_range(start=periodo_minimo, end='2024-12', freq='M')
 
@@ -93,14 +93,30 @@ class INETourismProcessor:
                            .apply(interpolate_group, include_groups=False)
                            .reset_index()
                            .rename(columns={'level_1': DatasetKeys.FECHA}))
-
-        # Merge final con contratos para el porcentaje interpolado
+        return df_interpolated
+    
+    def _porcentaje_vt(df_amaem_dom, df_interpolated):
         df_resampled = pd.merge(df_interpolated, df_amaem_dom, on=[DatasetKeys.BARRIO, DatasetKeys.FECHA], how='left')
-        df_resampled[DatasetKeys.PCT_VT_BARRIO] = (df_resampled[DatasetKeys.NUM_VT_BARRIO] / df_resampled[DatasetKeys.NUM_CONTRATOS]) * 100
-        df_resampled[DatasetKeys.PCT_VT_BARRIO] = df_resampled[DatasetKeys.PCT_VT_BARRIO].fillna(0).round(4)
+        df_resampled[DatasetKeys.PCT_VT_BARRIO] = ((df_resampled[DatasetKeys.NUM_VT_BARRIO] / df_resampled[DatasetKeys.NUM_CONTRATOS]) * 100)
+        df_resampled[DatasetKeys.PCT_VT_BARRIO] = df_resampled[DatasetKeys.PCT_VT_BARRIO].fillna(0).round(2)
+        df_resampled[DatasetKeys.NUM_VT_BARRIO] = df_resampled[DatasetKeys.NUM_VT_BARRIO].round().astype(int)
 
         return df_resampled[[DatasetKeys.BARRIO, DatasetKeys.FECHA, DatasetKeys.NUM_VT_BARRIO, DatasetKeys.PCT_VT_BARRIO]]
 
+    @staticmethod
+    def _process_municipios(df_amaem: pd.DataFrame) -> pd.DataFrame:
+        """Procesa datos de viviendas turísticas por municipio y los mapea a barrios."""
+        
+        df_barrio               = INETourismProcessor._map_mun2barrios()
+        df_amaem_dom, df_merge  = INETourismProcessor._merge_domesticos_ine(df_amaem, df_barrio)
+        df_interpolated         = INETourismProcessor._interpolacion_mensual(df_merge)
+        df_final_mun            = INETourismProcessor._porcentaje_vt(df_amaem_dom, df_interpolated) 
+
+        return df_final_mun
+
+
+    ######################################################################################
+    #                                        PROVINCIA
     @staticmethod
     def _process_provincia() -> pd.DataFrame:
         """Procesa datos de ocupaciones y pernoctaciones a nivel provincial."""

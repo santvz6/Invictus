@@ -23,6 +23,6 @@ class DatasetKeys:
     
     # --- Columnas Externas (INE Turismo) ---
     NUM_VT_BARRIO           = "num_vt_barrio"
-    PCT_VT_BARRIO           = "porcentaje_vt_barrio"
+    PCT_VT_BARRIO           = "porcentaje_vt_barrio %"
     OCUPACIONES_VT_PROV     = "ocupaciones_vt_prov"
     PERNOCTACIONES_VT_PROV  = "pernoctaciones_vt_prov"

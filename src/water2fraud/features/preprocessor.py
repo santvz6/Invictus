@@ -1,6 +1,7 @@
 import numpy as np
 import pandas as pd
 
+from src.water2fraud.features.amaem_processor import AMAEMProcessor
 from src.water2fraud.features.ine_tourism_processor import INETourismProcessor
 from src.config import get_logger, DatasetKeys, Paths
 logger = get_logger(__name__)
@@ -40,15 +41,22 @@ class WaterPreprocessor:
         
         # Seleccionamos las features que irán a la red neuronal
         feature_cols = [
+            # AMAEM
             DatasetKeys.CONSUMO_RATIO,
             DatasetKeys.MES_SIN,
             DatasetKeys.MES_COS,
+
+            # INE - TOURISM
             DatasetKeys.NUM_VT_BARRIO,     
             DatasetKeys.PCT_VT_BARRIO,
             DatasetKeys.OCUPACIONES_VT_PROV,    
             DatasetKeys.PERNOCTACIONES_VT_PROV  
+
+            # FÍSICOS
             # TODO: variables físicas / AEMET añadidas previamente al DF:
             # TODO: DatasetKeys.CONSUMO_FISICO_ESPERADO, 
+
+            # AEMET
             # TODO: 'temperatura_media', 'precipitacion', etc.
         ]
         
@@ -107,61 +115,23 @@ class WaterPreprocessor:
             DatasetKeys.PCT_VT_BARRIO,
             DatasetKeys.OCUPACIONES_VT_PROV,
             DatasetKeys.PERNOCTACIONES_VT_PROV
+            # TODO: añadir features
         ]
         
         # Filtramos por seguridad
         cols_present = [c for c in cols_to_scale if c in df.columns]
         if cols_present:
+            # ! A pesar de que hay 'Data Leakage'
+            # ! Hay que recordar que estamos entrenando un Autoencoder
             df[cols_present] = scaler.fit_transform(df[cols_present])
         
         # Escalado del mes
         meses = df[DatasetKeys.MES]
-        df[DatasetKeys.MES_SIN] = np.sin(2 * np.pi * meses / 12)
-        df[DatasetKeys.MES_COS] = np.cos(2 * np.pi * meses / 12)
+        df[DatasetKeys.MES_SIN] = (np.sin(2 * np.pi * meses / 12) + 1) / 2
+        df[DatasetKeys.MES_COS] = (np.cos(2 * np.pi * meses / 12) + 1) / 2
 
         return df
     
-    @staticmethod
-    def _rename_df(df: pd.DataFrame) -> pd.DataFrame:
-        """Estandariza los nombres de las columnas basándose en las constantes de DatasetKeys."""
-        return df.copy().rename(columns={
-            "Barrio": DatasetKeys.BARRIO, 
-            "Uso": DatasetKeys.USO, 
-            "Fecha (aaaa/mm/dd)": DatasetKeys.FECHA,
-            "Consumo (litros)": DatasetKeys.CONSUMO,
-            "Nº Contratos" : DatasetKeys.NUM_CONTRATOS
-        })
-
-
-    @staticmethod
-    def _process_NaN(df: pd.DataFrame) -> pd.DataFrame:
-        """Elimina las filas que contienen valores nulos (NaN) del DataFrame."""
-        return df.copy().dropna() # Eliminamos todos los nulos (al no representar gran parte de nuestros datos)
-    
-    @staticmethod
-    def _convert_dtype(df: pd.DataFrame) -> pd.DataFrame:
-        """ Convierte y ajusta los tipos de datos de las columnas numéricas y de fecha,
-        y genera la característica derivada de ratio de consumo por contrato."""
-        df = df.copy()
-
-        # StrToInt
-        for key in [DatasetKeys.CONSUMO, DatasetKeys.NUM_CONTRATOS]:
-            df[key] = df[key].str.replace(",", "").astype(int)
-        df[DatasetKeys.CONSUMO_RATIO] = df[DatasetKeys.CONSUMO] / df[DatasetKeys.NUM_CONTRATOS]
-
-        # StrToDatetime
-        df[DatasetKeys.FECHA] = pd.to_datetime(df[DatasetKeys.FECHA], format="%Y/%m/%d")
-        df[DatasetKeys.MES] = df[DatasetKeys.FECHA].dt.month
-        return df
-    
-    @staticmethod
-    def _one_hot_encoding(df: pd.DataFrame) -> pd.DataFrame:
-        """Aplica One-Hot Encoding a la variable categórica de Uso del agua."""
-        df = df.copy()
-        dummies = pd.get_dummies(df[DatasetKeys.USO], prefix=DatasetKeys.USO, dtype=int)
-        return  pd.concat([df, dummies], axis=1)
-
-
     @staticmethod
     def _save_processed_df(df: pd.DataFrame) -> pd.DataFrame:
         """Persiste el DataFrame preprocesado en disco en formato CSV."""
@@ -172,18 +142,9 @@ class WaterPreprocessor:
         """Pipeline principal de limpieza que orquesta los pasos de preprocesamiento de un DataFrame crudo."""
         df = df.copy()
         
-        # AMAEM
-        df = WaterPreprocessor._rename_df(df)
-        df = WaterPreprocessor._process_NaN(df)
-        df = WaterPreprocessor._convert_dtype(df)
-        df = WaterPreprocessor._one_hot_encoding(df)
+        df = AMAEMProcessor.process(df)
+        df = INETourismProcessor.process(df)
         
-        # INE Tourism
-        df = INETourismProcessor.enrich_with_tourism_data(df)
         df_scaled = WaterPreprocessor._scale_features(df)
-        
-        # Not Scaled
-        df.to_csv(Paths.PROC_CSV_DIR / "not_scaled.csv", index=False)
-        # Scaled
         WaterPreprocessor._save_processed_df(df_scaled)
         return df_scaled
