@@ -75,6 +75,13 @@ class Paths:
     INE_PROVINCIA_HOTEL     = INE_DIR / "provincia-info-hotel.csv"
     INE_PROVINCIA_VT        = INE_DIR / "provincia-info-vt.csv"
 
+    # --- AEMET ---
+    AEMET_DIR               = EXT_DIR / "aemet"
+    AEMET_CLIMA_BARRIOS     = AEMET_DIR / "clima_barrios_alicante_final.csv"
+
+    # --- SENTINEL ---
+    SENTINEL_DIR  = EXT_DIR / "sentinel"
+    SENTINEL_NDVI = SENTINEL_DIR / "ndvi_alicante.csv"
 
     @classmethod
     def init_project(cls):

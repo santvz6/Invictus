@@ -14,26 +14,43 @@ class INETourismProcessor:
 
     @staticmethod
     def process(df_amaem: pd.DataFrame) -> pd.DataFrame:
-        """
-        Punto de entrada principal. Recibe el dataframe limpio de AMAEM y le inyecta 
-        las variables turísticas del INE (Municipios y Provincia).
-        """
         logger.info("Iniciando enriquecimiento con datos turísticos del INE...")
         
-        # Guardamos el formato original de la fecha de AMAEM para restaurarlo al final
-        formato_fecha_original = df_amaem[DatasetKeys.FECHA].copy()
-        df_amaem[DatasetKeys.FECHA] = pd.to_datetime(df_amaem[DatasetKeys.FECHA]).dt.to_period('M')
+        # 0. Creamos una copia para no alterar el original y generamos un ancla mensual (Period)
+        df_final = df_amaem.copy()
+        # Aseguramos que la fecha es datetime antes de crear el ancla
+        df_final[DatasetKeys.FECHA] = pd.to_datetime(df_final[DatasetKeys.FECHA])
+        
+        # 'fecha_cruce_mensual' será ej: "2024-12" (tipo Period). Esto es vital para el join.
+        df_final['fecha_cruce_mensual'] = df_final[DatasetKeys.FECHA].dt.to_period('M')
 
         # 1. Procesar Municipios (Viviendas Turísticas interpoladas por Barrio)
-        df_municipios = INETourismProcessor._process_municipios(df_amaem)
+        # Le pasamos el df_final porque necesitamos los datos domésticos
+        df_municipios = INETourismProcessor._process_municipios(df_final)
         
         # 2. Procesar Provincia (Ocupaciones y Pernoctaciones)
         df_provincia = INETourismProcessor._process_provincia()
 
         # 3. Merge Final
         logger.info("Cruzando datos de AMAEM con INE Municipios y Provincia...")
-        df_final = pd.merge(df_amaem, df_municipios, on=[DatasetKeys.BARRIO, DatasetKeys.FECHA], how='left')
-        df_final = pd.merge(df_final, df_provincia, on=DatasetKeys.FECHA, how='left')
+        
+        # Cruzamos Municipios usando el Barrio y nuestra NUEVA ancla mensual
+        df_final = pd.merge(
+            df_final, 
+            df_municipios, 
+            left_on=[DatasetKeys.BARRIO, 'fecha_cruce_mensual'], 
+            right_on=[DatasetKeys.BARRIO, 'fecha_cruce_mensual'], 
+            how='left'
+        )
+        
+        # Cruzamos Provincia usando solo nuestra NUEVA ancla mensual
+        df_final = pd.merge(
+            df_final, 
+            df_provincia, 
+            left_on='fecha_cruce_mensual', 
+            right_on='fecha_cruce_mensual', 
+            how='left'
+        )
 
         # Rellenar posibles nulos generados por el cruce con 0
         cols_ine = [DatasetKeys.NUM_VT_BARRIO, DatasetKeys.PCT_VT_BARRIO, DatasetKeys.OCUPACIONES_VT_PROV, DatasetKeys.PERNOCTACIONES_VT_PROV]
@@ -41,8 +58,9 @@ class INETourismProcessor:
             if col in df_final.columns:
                 df_final[col] = df_final[col].fillna(0)
 
-        # Restaurar formato de fecha original
-        df_final[DatasetKeys.FECHA] = formato_fecha_original
+        # 4. Limpieza Final: Borramos el ancla temporal de cruce. 
+        # ¡La columna original DatasetKeys.FECHA ha permanecido intacta todo el tiempo!
+        df_final = df_final.drop(columns=['fecha_cruce_mensual'])
         
         logger.info("Enriquecimiento con INE completado con éxito.")
         return df_final
@@ -54,59 +72,59 @@ class INETourismProcessor:
         df_mun = pd.read_csv(Paths.INE_MUNICIPIOS_PLAZAS, encoding="latin1", sep="\t")
         df_mapping = pd.read_csv(Paths.MAPPING_BARRIOS, sep=";")
         
-        # Limpieza de fechas y números
-        df_mun[DatasetKeys.FECHA] = pd.to_datetime(df_mun['Periodo'].str.replace('M', '-')).dt.to_period('M')
+        # Limpieza de fechas: Creamos 'fecha_cruce_mensual'
+        df_mun['fecha_cruce_mensual'] = pd.to_datetime(df_mun['Periodo'].str.replace('M', '-')).dt.to_period('M')
+        
         if 'Total' in df_mun.columns:
             df_mun['Total'] = df_mun['Total'].astype(str).str.replace('.', '', regex=False).str.replace(',', '.', regex=False)
             df_mun['Total'] = pd.to_numeric(df_mun['Total'], errors='coerce').fillna(0)
 
-        # Filtramos solo viviendas
         df_mun = df_mun[df_mun['Viviendas y plazas'].str.contains('Viviendas', na=False, case=False)]
-        df_mun_data = df_mun[['Municipios', DatasetKeys.FECHA, 'Total']].rename(columns={'Total': 'Total_vt_municipio'})
+        df_mun_data = df_mun[['Municipios', 'fecha_cruce_mensual', 'Total']].rename(columns={'Total': 'Total_vt_municipio'})
 
-        # Cruzamos con los pesos de los barrios
         df_weighted = pd.merge(df_mapping, df_mun_data, left_on='municipio', right_on='Municipios')
         df_weighted['peso'] = pd.to_numeric(df_weighted['peso'], errors='coerce').fillna(0)
         df_weighted['Total_vt_municipio'] = pd.to_numeric(df_weighted['Total_vt_municipio'], errors='coerce').fillna(0)
         df_weighted[DatasetKeys.NUM_VT_BARRIO] = df_weighted['Total_vt_municipio'] * df_weighted['peso']
 
-        df_barrio = df_weighted.groupby([DatasetKeys.BARRIO, DatasetKeys.FECHA])[DatasetKeys.NUM_VT_BARRIO].sum().reset_index()
+        df_barrio = df_weighted.groupby([DatasetKeys.BARRIO, 'fecha_cruce_mensual'])[DatasetKeys.NUM_VT_BARRIO].sum().reset_index()
         return df_barrio
     
+    @staticmethod
     def _merge_domesticos_ine(df_amaem, df_barrio):
-        df_amaem_dom = df_amaem[df_amaem[DatasetKeys.USO] == 'DOMESTICO'][[DatasetKeys.BARRIO, DatasetKeys.FECHA, DatasetKeys.NUM_CONTRATOS]]
-        df_merge = pd.merge(df_barrio, df_amaem_dom, on=[DatasetKeys.BARRIO, DatasetKeys.FECHA], how='left')
+        df_amaem_dom = df_amaem[df_amaem[DatasetKeys.USO] == 'DOMESTICO'][[DatasetKeys.BARRIO, 'fecha_cruce_mensual', DatasetKeys.NUM_CONTRATOS]]
+        df_merge = pd.merge(df_barrio, df_amaem_dom, on=[DatasetKeys.BARRIO, 'fecha_cruce_mensual'], how='left')
         return df_amaem_dom, df_merge
 
+    @staticmethod
     def _interpolacion_mensual(df_merge):
-        periodo_minimo = df_merge[DatasetKeys.FECHA].min()
+        periodo_minimo = df_merge['fecha_cruce_mensual'].min()
         rango_completo = pd.period_range(start=periodo_minimo, end='2024-12', freq='M')
 
         def interpolate_group(group):
-            group = group.set_index(DatasetKeys.FECHA).reindex(rango_completo)
+            group = group.set_index('fecha_cruce_mensual').reindex(rango_completo)
             if DatasetKeys.NUM_VT_BARRIO in group.columns:
                 group[DatasetKeys.NUM_VT_BARRIO] = group[DatasetKeys.NUM_VT_BARRIO].interpolate(method='linear')
             return group.loc['2022-01':'2024-12']
 
-        df_interpolated = (df_merge[[DatasetKeys.BARRIO, DatasetKeys.FECHA, DatasetKeys.NUM_VT_BARRIO]]
+        df_interpolated = (df_merge[[DatasetKeys.BARRIO, 'fecha_cruce_mensual', DatasetKeys.NUM_VT_BARRIO]]
                            .groupby(DatasetKeys.BARRIO, group_keys=True)
                            .apply(interpolate_group, include_groups=False)
                            .reset_index()
-                           .rename(columns={'level_1': DatasetKeys.FECHA}))
+                           .rename(columns={'level_1': 'fecha_cruce_mensual'})) # Mantenemos el nombre coherente
         return df_interpolated
     
+    @staticmethod
     def _porcentaje_vt(df_amaem_dom, df_interpolated):
-        df_resampled = pd.merge(df_interpolated, df_amaem_dom, on=[DatasetKeys.BARRIO, DatasetKeys.FECHA], how='left')
+        df_resampled = pd.merge(df_interpolated, df_amaem_dom, on=[DatasetKeys.BARRIO, 'fecha_cruce_mensual'], how='left')
         df_resampled[DatasetKeys.PCT_VT_BARRIO] = ((df_resampled[DatasetKeys.NUM_VT_BARRIO] / df_resampled[DatasetKeys.NUM_CONTRATOS]) * 100)
         df_resampled[DatasetKeys.PCT_VT_BARRIO] = df_resampled[DatasetKeys.PCT_VT_BARRIO].fillna(0).round(2)
         df_resampled[DatasetKeys.NUM_VT_BARRIO] = df_resampled[DatasetKeys.NUM_VT_BARRIO].round().astype(int)
 
-        return df_resampled[[DatasetKeys.BARRIO, DatasetKeys.FECHA, DatasetKeys.NUM_VT_BARRIO, DatasetKeys.PCT_VT_BARRIO]]
+        return df_resampled[[DatasetKeys.BARRIO, 'fecha_cruce_mensual', DatasetKeys.NUM_VT_BARRIO, DatasetKeys.PCT_VT_BARRIO]]
 
     @staticmethod
     def _process_municipios(df_amaem: pd.DataFrame) -> pd.DataFrame:
-        """Procesa datos de viviendas turísticas por municipio y los mapea a barrios."""
-        
         df_barrio               = INETourismProcessor._map_mun2barrios()
         df_amaem_dom, df_merge  = INETourismProcessor._merge_domesticos_ine(df_amaem, df_barrio)
         df_interpolated         = INETourismProcessor._interpolacion_mensual(df_merge)
@@ -119,10 +137,8 @@ class INETourismProcessor:
     #                                        PROVINCIA
     @staticmethod
     def _process_provincia() -> pd.DataFrame:
-        """Procesa datos de ocupaciones y pernoctaciones a nivel provincial."""
         df_prov = pd.read_csv(Paths.INE_PROVINCIA_VT, encoding="utf-8", sep=";")
         
-        # Limpieza básica de nombres de columnas
         df_prov.columns = (df_prov.columns
                            .str.strip().str.lower()
                            .str.replace(' ', '_').str.replace(':', '')
@@ -136,14 +152,14 @@ class INETourismProcessor:
             "numero_de_noches_ocupadas": DatasetKeys.PERNOCTACIONES_VT_PROV
         })
 
-        df_prov[DatasetKeys.FECHA] = pd.to_datetime(df_prov['fecha_orig'].str.replace('M', '-')).dt.to_period('M')
-        df_prov_clean = df_prov[[DatasetKeys.FECHA, DatasetKeys.OCUPACIONES_VT_PROV, DatasetKeys.PERNOCTACIONES_VT_PROV]].copy()
+        # Creamos 'fecha_cruce_mensual'
+        df_prov['fecha_cruce_mensual'] = pd.to_datetime(df_prov['fecha_orig'].str.replace('M', '-')).dt.to_period('M')
+        df_prov_clean = df_prov[['fecha_cruce_mensual', DatasetKeys.OCUPACIONES_VT_PROV, DatasetKeys.PERNOCTACIONES_VT_PROV]].copy()
 
-        # Limpieza de puntos en miles
         for col in [DatasetKeys.OCUPACIONES_VT_PROV, DatasetKeys.PERNOCTACIONES_VT_PROV]:
             if df_prov_clean[col].dtype == 'object':
                 df_prov_clean[col] = df_prov_clean[col].str.replace('.', '', regex=False).astype(float)
             elif df_prov_clean[col].dtype in ['float64', 'int64']:
-                df_prov_clean[col] = (df_prov_clean[col] * 1000).astype(int) # Según tu lógica del notebook
+                df_prov_clean[col] = (df_prov_clean[col] * 1000).astype(int)
 
         return df_prov_clean
