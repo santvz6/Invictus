@@ -133,9 +133,10 @@ class WaterPreprocessor:
         return df
     
     @staticmethod
-    def _save_processed_df(df: pd.DataFrame) -> pd.DataFrame:
+    def _save_processed_df(df: pd.DataFrame, df_scaled: pd.DataFrame) -> pd.DataFrame:
         """Persiste el DataFrame preprocesado en disco en formato CSV."""
-        df.to_csv(Paths.PROC_CSV_AMAEM, index=False)
+        df.to_csv(Paths.PROC_CSV_AMAEM_NOT_SCALED, index=False)
+        df_scaled.to_csv(Paths.PROC_CSV_AMAEM_SCALED, index=False)
         
     @staticmethod
     def process_raw_data(df: pd.DataFrame) -> pd.DataFrame:
@@ -146,5 +147,5 @@ class WaterPreprocessor:
         df = INETourismProcessor.process(df)
         
         df_scaled = WaterPreprocessor._scale_features(df)
-        WaterPreprocessor._save_processed_df(df_scaled)
+        WaterPreprocessor._save_processed_df(df, df_scaled)
         return df_scaled

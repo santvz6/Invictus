@@ -55,8 +55,9 @@ class Paths:
     PROC_CSV_DIR = PROC_DIR / "csv"
     PROC_JSON_DIR = PROC_DIR / "json"
     # --- CSV --- #
-    PROC_CSV_AMAEM = PROC_CSV_DIR / "AMAEM-2022-2024.csv"
-
+    PROC_CSV_AMAEM_SCALED = PROC_CSV_DIR / "AMAEM-2022-2024.csv"
+    PROC_CSV_AMAEM_NOT_SCALED = PROC_CSV_DIR / "AMAEM-2022-2024_not_scaled.csv"
+    
     ## --- EXTERNAL --- ##
 
     # --- GVA --- #
