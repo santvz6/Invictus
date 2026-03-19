@@ -137,7 +137,7 @@ class TreeModelValidator:
                 if np.any(mask_anomalia):
                     axes[1].scatter(X_pca[mask_anomalia, 0], X_pca[mask_anomalia, 1], 
                                     c=color, alpha=1.0, s=120, marker='X', edgecolor='white', 
-                                    linewidths=1.5, label=f'🚨 Fraude - {uso}')
+                                    linewidths=1.5, label=f'Fraude - {uso}')
         else:
             # Fallback por si alguien llama a la función sin pasar la variable 'uso_labels'
             axes[1].scatter(X_pca[~anomalies_bool, 0], X_pca[~anomalies_bool, 1], 
