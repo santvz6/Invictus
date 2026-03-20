@@ -13,7 +13,7 @@ __pycache__/
 
 # Datos Sensibles
 **/data/
-notebooks/**/*.png
+notebooks/AMAEM/
 
 # Notebooks
 .ipynb_checkpoints/

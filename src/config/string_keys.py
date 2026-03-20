@@ -12,7 +12,7 @@ class DatasetKeys:
     USO_NO_DOMESTICO = USO + "_NO DOMESTICO"
 
     # --- Columnas calculadas (Features) ---
-    CONTRATO_RATIO = "consumo_ratio"
+    CONSUMO_RATIO = "consumo_ratio"
     
     MES = "mes"
     MES_SIN = "mes_sin"
@@ -20,9 +20,17 @@ class DatasetKeys:
 
     # --- Columnas Externas (Físicos) ---
     CONSUMO_FISICO_ESPERADO = "consumo_teorico_fisica"
+    PREDICCION_FOURIER      = "prediccion_fourier"
+    IMPACTO_EXOGENO         = "impacto_exogeno"
+    RESIDUO                 = "residuo"
+    NDVI_SATELITE           = "ndvi_satelite"
     
     # --- Columnas Externas (INE Turismo) ---
     NUM_VT_BARRIO           = "num_vt_barrio"
-    PCT_VT_BARRIO           = "porcentaje_vt_barrio"
+    PCT_VT_BARRIO           = "porcentaje_vt_barrio %"
     OCUPACIONES_VT_PROV     = "ocupaciones_vt_prov"
     PERNOCTACIONES_VT_PROV  = "pernoctaciones_vt_prov"
+
+    # --- Columnas Externas (AEMET) ---
+    TEMP_MEDIA              = "temperatura_media"
+    PRECIPITACION           = "precipitacion"

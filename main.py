@@ -133,10 +133,10 @@ class WaterApp:
         logger.info("--- FASE 3: Entrenamiento de Modelos LSTM-AE ---")
         
         # Kwargs
-        batch_size  = kwargs.get("batch_size", 32)
-        hidden_dim  = kwargs.get("hidden_dim", 64)
-        latent_dim  = kwargs.get("latent_dim", 32) # 16
-        epochs      = kwargs.get("epochs", 100)
+        batch_size  = kwargs.get("batch_size", 64)
+        hidden_dim  = kwargs.get("hidden_dim", 128)
+        latent_dim  = kwargs.get("latent_dim", 16)
+        epochs      = kwargs.get("epochs", 150)
         lr          = kwargs.get("lr", 1e-3)
         plot_graphs = kwargs.get("plot", False)
           
