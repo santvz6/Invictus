@@ -3,6 +3,9 @@ import pandas as pd
 
 from src.water2fraud.features.amaem_processor import AMAEMProcessor
 from src.water2fraud.features.ine_tourism_processor import INETourismProcessor
+from src.water2fraud.features.aemet_processor import AEMETProcessor
+from src.water2fraud.features.fisicos_processor import FisicosProcessor
+from src.water2fraud.features.sentinel_processor import SentinelProcessor
 from src.config import get_logger, DatasetKeys, Paths
 logger = get_logger(__name__)
 
@@ -50,16 +53,23 @@ class WaterPreprocessor:
             DatasetKeys.NUM_VT_BARRIO,     
             DatasetKeys.PCT_VT_BARRIO,
             DatasetKeys.OCUPACIONES_VT_PROV,    
-            DatasetKeys.PERNOCTACIONES_VT_PROV  
+            DatasetKeys.PERNOCTACIONES_VT_PROV,  
 
             # FÍSICOS
-            # TODO: variables físicas / AEMET añadidas previamente al DF:
-            # TODO: DatasetKeys.CONSUMO_FISICO_ESPERADO, 
+            DatasetKeys.CONSUMO_FISICO_ESPERADO, 
 
             # AEMET
-            # TODO: 'temperatura_media', 'precipitacion', etc.
+            DatasetKeys.TEMP_MEDIA, 
+            DatasetKeys.PRECIPITACION,
+            
+            # SENTINEL
+            DatasetKeys.NDVI_SATELITE
         ]
         
+        # Asegurar que solo usamos características que existan realmente en el DataFrame
+        # (protege el código si algún archivo externo como Sentinel no se encontró)
+        feature_cols = [col for col in feature_cols if col in df.columns]
+
         # Asegurar que existan las columnas OHE, si no, rellenar con 0
         #ohe_cols = [DatasetKeys.USO_DOMESTICO, DatasetKeys.USO_COMERCIAL, DatasetKeys.USO_NO_DOMESTICO]
         #for col in ohe_cols:
@@ -114,8 +124,11 @@ class WaterPreprocessor:
             DatasetKeys.NUM_VT_BARRIO,
             DatasetKeys.PCT_VT_BARRIO,
             DatasetKeys.OCUPACIONES_VT_PROV,
-            DatasetKeys.PERNOCTACIONES_VT_PROV
-            # TODO: añadir features
+            DatasetKeys.PERNOCTACIONES_VT_PROV,
+            DatasetKeys.TEMP_MEDIA,
+            DatasetKeys.PRECIPITACION,
+            DatasetKeys.CONSUMO_FISICO_ESPERADO,
+            DatasetKeys.NDVI_SATELITE
         ]
         
         # Filtramos por seguridad
@@ -145,7 +158,10 @@ class WaterPreprocessor:
         
         df = AMAEMProcessor.process(df)
         df = INETourismProcessor.process(df)
-        
+        df = AEMETProcessor.process(df)
+        df = FisicosProcessor.process(df)
+        df = SentinelProcessor.process(df)
+
         df_scaled = WaterPreprocessor._scale_features(df)
         WaterPreprocessor._save_processed_df(df, df_scaled)
         return df_scaled

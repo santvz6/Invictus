@@ -48,10 +48,15 @@ class AMAEMProcessor:
         return  pd.concat([df, dummies], axis=1)
 
 
+    @staticmethod
     def process(df: pd.DataFrame) -> pd.DataFrame:
         df = df.copy()
         df = AMAEMProcessor._rename_df(df)
         df = AMAEMProcessor._process_NaN(df)
         df = AMAEMProcessor._convert_dtype(df)
         df = AMAEMProcessor._one_hot_encoding(df)
+        
+        logger.info(f"Guardando dataset intermedio en {Paths.PROC_CSV_STEP1_AMAEM}")
+        df.to_csv(Paths.PROC_CSV_STEP1_AMAEM, index=False)
+        
         return df

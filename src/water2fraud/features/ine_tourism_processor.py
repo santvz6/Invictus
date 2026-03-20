@@ -38,8 +38,7 @@ class INETourismProcessor:
         df_final = pd.merge(
             df_final, 
             df_municipios, 
-            left_on=[DatasetKeys.BARRIO, 'fecha_cruce_mensual'], 
-            right_on=[DatasetKeys.BARRIO, 'fecha_cruce_mensual'], 
+            on=[DatasetKeys.BARRIO, 'fecha_cruce_mensual'], 
             how='left'
         )
         
@@ -47,8 +46,7 @@ class INETourismProcessor:
         df_final = pd.merge(
             df_final, 
             df_provincia, 
-            left_on='fecha_cruce_mensual', 
-            right_on='fecha_cruce_mensual', 
+            on='fecha_cruce_mensual', 
             how='left'
         )
 
@@ -61,6 +59,10 @@ class INETourismProcessor:
         # 4. Limpieza Final: Borramos el ancla temporal de cruce. 
         # ¡La columna original DatasetKeys.FECHA ha permanecido intacta todo el tiempo!
         df_final = df_final.drop(columns=['fecha_cruce_mensual'])
+        
+        logger.info(f"Guardando dataset intermedio en {Paths.PROC_CSV_STEP2_INE}")
+        cols_to_save = [DatasetKeys.BARRIO, DatasetKeys.FECHA] + [c for c in cols_ine if c in df_final.columns]
+        df_final[cols_to_save].drop_duplicates().to_csv(Paths.PROC_CSV_STEP2_INE, index=False)
         
         logger.info("Enriquecimiento con INE completado con éxito.")
         return df_final

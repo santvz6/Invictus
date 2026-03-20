@@ -55,6 +55,11 @@ class Paths:
     PROC_CSV_DIR = PROC_DIR / "csv"
     PROC_JSON_DIR = PROC_DIR / "json"
     # --- CSV --- #
+    PROC_CSV_STEP1_AMAEM = PROC_CSV_DIR / "step1_amaem.csv"
+    PROC_CSV_STEP2_INE = PROC_CSV_DIR / "step2_ine.csv"
+    PROC_CSV_STEP3_AEMET = PROC_CSV_DIR / "step3_aemet.csv"
+    PROC_CSV_STEP4_FISICOS = PROC_CSV_DIR / "step4_fisicos.csv"
+    PROC_CSV_STEP5_SENTINEL = PROC_CSV_DIR / "step5_sentinel.csv"
     PROC_CSV_AMAEM_SCALED = PROC_CSV_DIR / "AMAEM-2022-2024.csv"
     PROC_CSV_AMAEM_NOT_SCALED = PROC_CSV_DIR / "AMAEM-2022-2024_not_scaled.csv"
     
@@ -105,5 +110,3 @@ class Paths:
         if len(existing_logs) >= max_logs:
             for log_file in existing_logs[:(len(existing_logs) - max_logs + 1)]:
                 shutil.move(str(log_file), str(cls.TEMP_DIR / log_file.name))
-
-
