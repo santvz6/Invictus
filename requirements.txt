@@ -40,6 +40,12 @@ plotly
 folium
 mapclassify
 
+# --- Dashboard Interactivo ---
+streamlit
+streamlit-folium
+geopandas
+branca
+
 # VERSIONES ESPECÍFICAS
 # 
 # torch==2.5.1+cu121
