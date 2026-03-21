@@ -2,10 +2,53 @@
 torch
 torchvision
 
+scikit-learn
+pandas
 
-scikit-learn==1.8.0
+xgboost
 
-pandas==3.0.0
+matplotlib
+seaborn
 
-matplotlib==3.10.8
-seaborn==0.13.2
+# TimeSeries
+tslearn
+h5py
+
+# Explicabilidad
+shap
+
+# Para evitar conflictos de github en los .ipynb 
+nbstripout
+# una vez instalado ejecutamos (en la terminal):
+# nbstripout --install
+
+# YAML
+pyyaml
+
+# --- Visualización ---
+
+# Manual Map
+osmnx
+thefuzz
+shapely
+geopy
+
+# Json Map
+plotly
+
+# Final Map
+folium
+mapclassify
+
+# VERSIONES ESPECÍFICAS
+# 
+# torch==2.5.1+cu121
+# torchvision==0.20.1+cu121
+# --extra-index-url https://download.pytorch.org/whl/cu121
+# 
+# scikit-learn==1.8.0
+# 
+# pandas==3.0.0
+# 
+# matplotlib==3.10.8
+# seaborn==0.13.2
