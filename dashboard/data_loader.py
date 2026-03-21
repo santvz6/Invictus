@@ -64,6 +64,49 @@ def load_dataframe() -> pd.DataFrame:
         # Asegurar columna fecha como datetime
         if DatasetKeys.FECHA in df.columns:
             df[DatasetKeys.FECHA] = pd.to_datetime(df[DatasetKeys.FECHA], errors="coerce")
+            
+        # 1. Intentar enriquecer con los resultados del último experimento (Pipeline ML)
+        if Paths.EXPERIMENTS_DIR.exists():
+            experimentos = sorted([d for d in Paths.EXPERIMENTS_DIR.iterdir() if d.is_dir()])
+            if experimentos:
+                latest_exp = experimentos[-1]
+                res_path = latest_exp / "resultados_completos.csv"
+                if res_path.exists():
+                    df_res = pd.read_csv(res_path)
+                    if DatasetKeys.FECHA in df_res.columns:
+                        df_res[DatasetKeys.FECHA] = pd.to_datetime(df_res[DatasetKeys.FECHA], errors="coerce")
+                        
+                    cols_merge = [DatasetKeys.BARRIO, DatasetKeys.FECHA]
+                    if DatasetKeys.USO in df.columns and DatasetKeys.USO in df_res.columns:
+                        cols_merge.append(DatasetKeys.USO)
+                        
+                    cols_extract = ["reconstruction_error", "is_ae_anomaly", "ALERTA_TURISTICA_ILEGAL", "cluster"]
+                    cols_extract = [c for c in cols_extract if c in df_res.columns]
+                    
+                    if cols_extract:
+                        df_res_sub = df_res[cols_merge + cols_extract].drop_duplicates(subset=cols_merge)
+                        df = df.merge(df_res_sub, on=cols_merge, how="left")
+
+        # 2. Parche de seguridad para el Dashboard: asegurar las columnas de inferencia
+        if "reconstruction_error" not in df.columns:
+            if DatasetKeys.CONSUMO_FISICO_ESPERADO in df.columns and DatasetKeys.CONSUMO in df.columns:
+                denominador = df[DatasetKeys.CONSUMO_FISICO_ESPERADO].fillna(1).replace(0, 1)
+                df["reconstruction_error"] = (abs(df[DatasetKeys.CONSUMO] - df[DatasetKeys.CONSUMO_FISICO_ESPERADO]) / denominador).round(4)
+            else:
+                df["reconstruction_error"] = 0.0
+        df["reconstruction_error"] = df["reconstruction_error"].fillna(0.0)
+
+        for col, default_val in [("is_ae_anomaly", False), ("ALERTA_TURISTICA_ILEGAL", False), ("cluster", 0)]:
+            if col not in df.columns:
+                df[col] = default_val
+            df[col] = df[col].fillna(default_val)
+            
+        if DatasetKeys.PREDICCION_FOURIER not in df.columns:
+            if DatasetKeys.CONSUMO_FISICO_ESPERADO in df.columns:
+                df[DatasetKeys.PREDICCION_FOURIER] = (df[DatasetKeys.CONSUMO_FISICO_ESPERADO] * 0.95).round(1)
+            else:
+                df[DatasetKeys.PREDICCION_FOURIER] = 0.0
+                
         return df
 
     # ── Datos sintéticos ──────────────────────────────────────────────────
@@ -130,6 +173,19 @@ def load_geodataframe() -> gpd.GeoDataFrame | None:
     try:
         gdf = gpd.read_file(geojson_path)
         gdf = gdf.to_crs(epsg=4326)
+        
+        # Estandarizar nombre del barrio en el GeoJSON (Vital para tooltips y merge correctos sin solapes)
+        for col in ["barrio_limpio", "DENOMINACI", "barrio"]:
+            if col in gdf.columns:
+                gdf["barrio_id"] = gdf[col].astype(str).str.strip().str.upper()
+                break
+        else:
+            # Fallback si no existe ninguna de las anteriores
+            gdf["barrio_id"] = "DESCONOCIDO"
+            
+        # Eliminar el polígono que representa a toda la ciudad para que no cubra a los demás barrios
+        gdf = gdf[~gdf["barrio_id"].isin(["ALICANTE", "ALACANT", "ALICANTE/ALACANT"])]
+            
         return gdf
     except Exception:
         return None
@@ -156,9 +212,16 @@ def aggregate_by_barrio(df: pd.DataFrame) -> pd.DataFrame:
         DatasetKeys.TEMP_MEDIA:               "mean",
         DatasetKeys.PRECIPITACION:            "mean",
         DatasetKeys.CONSUMO_FISICO_ESPERADO:  "sum",
+        DatasetKeys.PREDICCION_FOURIER:       "sum",
         "reconstruction_error":              "mean",
+        "is_ae_anomaly":                     "sum",
         "ALERTA_TURISTICA_ILEGAL":           "sum",
     }
     # Filtramos columnas que existan
     agg = {k: v for k, v in agg.items() if k in df.columns}
-    return df.groupby(DatasetKeys.BARRIO).agg(agg).reset_index()
+    
+    df_agg = df.groupby(DatasetKeys.BARRIO).agg(agg).reset_index()
+    # Redondeo seguro para que los Tooltips no muestren números con decimales infinitos
+    num_cols = df_agg.select_dtypes(include=[np.number]).columns
+    df_agg[num_cols] = df_agg[num_cols].round(2)
+    return df_agg

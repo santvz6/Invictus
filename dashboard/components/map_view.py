@@ -63,21 +63,38 @@ def _add_choropleth(m, gdf, df_barrio, feature_col):
 
     # Merge geometría + datos
     gdf_merged = gdf.copy()
-    gdf_merged["barrio_limpio"] = gdf_merged["DENOMINACI"].str.strip() \
-        if "DENOMINACI" in gdf_merged.columns else gdf_merged.iloc[:, 0].str.strip()
+    
+    # 1. Estandarización robusta y filtro antaisolape masivo
+    if "barrio_id" in gdf_merged.columns:
+        gdf_merged["barrio_limpio"] = gdf_merged["barrio_id"]
+    else:
+        gdf_merged["barrio_limpio"] = gdf_merged["DENOMINACI"].str.strip().str.upper() \
+            if "DENOMINACI" in gdf_merged.columns else gdf_merged.iloc[:, 0].astype(str).str.strip().str.upper()
+            
+    gdf_merged = gdf_merged[~gdf_merged["barrio_limpio"].isin(["ALICANTE", "ALACANT", "ALICANTE/ALACANT"])]
 
     from src.config import DatasetKeys
     df_temp = df_barrio.copy()
-    df_temp["barrio_limpio"] = df_temp[DatasetKeys.BARRIO].str.split("-", n=1).str[-1].str.strip()
+    df_temp["barrio_limpio"] = df_temp[DatasetKeys.BARRIO].str.split("-", n=1).str[-1].str.strip().str.upper()
 
     gdf_merged = gdf_merged.merge(df_temp, on="barrio_limpio", how="left")
     gdf_merged[feature_col] = gdf_merged[feature_col].fillna(0)
+    
+    for col in ["reconstruction_error", "ALERTA_TURISTICA_ILEGAL"]:
+        if col not in gdf_merged.columns:
+            gdf_merged[col] = 0.0
+            
+    if "reconstruction_error" in gdf_merged.columns:
+        gdf_merged["reconstruction_error"] = gdf_merged["reconstruction_error"].round(3)
 
-    vmin = gdf_merged[feature_col].min()
-    vmax = max(gdf_merged[feature_col].max(), vmin + 1)
+    # 2. ESCALADO ROBUSTO CONTRA OUTLIERS
+    vmin = gdf_merged[feature_col].quantile(0.05)
+    vmax = gdf_merged[feature_col].quantile(0.95)
+    if vmin == vmax:
+        vmin, vmax = vmin * 0.9, vmax * 1.1 + 1e-5
 
     colormap = cm.LinearColormap(
-        colors=["#1b4965", "#52b788", "#f4a261", "#c1121f"],
+        colors=["#0d1b2a", "#1b4965", "#4cc9f0", "#f39c12", "#e74c3c"],
         vmin=vmin, vmax=vmax,
         caption=feature_col,
     )
@@ -86,31 +103,28 @@ def _add_choropleth(m, gdf, df_barrio, feature_col):
         val = feature["properties"].get(feature_col, 0) or 0
         return {
             "fillColor":   colormap(val),
-            "color":       "#555555",
-            "weight":      0.8,
-            "fillOpacity": 0.70,
+            "color":       "rgba(255, 255, 255, 0.4)",
+            "weight":      1,
+            "fillOpacity": 0.75,
         }
 
     def highlight_fn(_):
-        return {"weight": 2.5, "color": "#ffffff", "fillOpacity": 0.90}
+        return {"weight": 3, "color": "#4cc9f0", "fillOpacity": 0.95}
 
-    folium.GeoJson(
-        gdf_merged.__geo_interface__,
-        style_function=highlight_fn,
-        highlight_function=highlight_fn,
-        tooltip=folium.GeoJsonTooltip(
-            fields=["barrio_limpio", feature_col,
-                    "reconstruction_error", "ALERTA_TURISTICA_ILEGAL"],
-            aliases=["Barrio", feature_col, "Error reconstrucción", "Alertas"],
-            localize=True,
-        ),
-        popup=folium.GeoJsonPopup(fields=["barrio_limpio"], aliases=["Barrio"]),
-    ).add_to(m)
-
+    # 3. FIX HOVER Y SOLAPE: Se unifica el Tooltip y el Style en una sola capa
     folium.GeoJson(
         gdf_merged.__geo_interface__,
         style_function=style_fn,
         highlight_function=highlight_fn,
+        tooltip=folium.GeoJsonTooltip(
+            fields=["barrio_limpio", feature_col,
+                    "reconstruction_error", "ALERTA_TURISTICA_ILEGAL"],
+            aliases=["Barrio:", f"{feature_col}:", "Error reconstrucción:", "Alertas:"],
+            localize=True,
+            style=("background-color: #0d1b2a; color: #e0e0e0; font-family: 'Inter', sans-serif; "
+                   "font-size: 13px; padding: 10px; border: 1px solid #4cc9f0; border-radius: 6px;")
+        ),
+        popup=folium.GeoJsonPopup(fields=["barrio_limpio"], aliases=["Barrio:"]),
     ).add_to(m)
 
     colormap.add_to(m)
