@@ -1,8 +1,6 @@
 """
 anomaly_panel.py
 ----------------
-Panel lateral que muestra KPIs y el gráfico Real vs. Esperado
-cuando el usuario selecciona un barrio en el mapa.
 Panel lateral que se despliega al seleccionar un barrio en el mapa.
 Muestra KPIs, gráfico comparativo Real vs Esperado y listado de anomalías.
 """
@@ -10,26 +8,96 @@ Muestra KPIs, gráfico comparativo Real vs Esperado y listado de anomalías.
 import pandas as pd
 import streamlit as st
 import plotly.graph_objects as go
-import streamlit as st
+import torch
 
-from src.config import DatasetKeys
+from src.config import DatasetKeys, Paths
 
+def _get_ae_reconstruction(df_full: pd.DataFrame, df_b: pd.DataFrame, barrio: str):
+    """Intenta cargar el modelo Autoencoder y reconstruir la serie temporal real del barrio."""
+    try:
+        from src.water2fraud.models.autoencoder import LSTMAutoencoder
+        
+        cluster_id = df_b["cluster"].iloc[0] if "cluster" in df_b.columns else 0
+        
+        if not Paths.EXPERIMENTS_DIR.exists(): return None
+        exp_dirs = sorted([d for d in Paths.EXPERIMENTS_DIR.iterdir() if d.is_dir()])
+        if not exp_dirs: return None
+        latest_exp = exp_dirs[-1]
+        
+        model_path = latest_exp / f"ae_cluster_{int(cluster_id)}.pth"
+        if not model_path.exists(): return None
+            
+        scaled_csv = Paths.PROC_CSV_AMAEM_SCALED
+        if not scaled_csv.exists(): return None
+        df_scaled = pd.read_csv(scaled_csv)
+        
+        barrios_limpios_sc = df_scaled[DatasetKeys.BARRIO].str.split("-", n=1).str[-1].str.strip().str.upper()
+        df_b_sc = df_scaled[barrios_limpios_sc == barrio].copy()
+        if df_b_sc.empty: return None
+            
+        df_b_sc[DatasetKeys.FECHA] = pd.to_datetime(df_b_sc[DatasetKeys.FECHA])
+        df_b_sc = df_b_sc.sort_values([DatasetKeys.USO, DatasetKeys.FECHA])
+        
+        # Usamos el uso principal para no romper la secuencia LSTM
+        uso_principal = "DOMESTICO" if "DOMESTICO" in df_b_sc[DatasetKeys.USO].values else df_b_sc[DatasetKeys.USO].iloc[0]
+        df_b_sc = df_b_sc[df_b_sc[DatasetKeys.USO] == uso_principal]
+        
+        feature_cols = [
+            DatasetKeys.CONSUMO_RATIO, DatasetKeys.MES_SIN, DatasetKeys.MES_COS,
+            DatasetKeys.NUM_VT_BARRIO, DatasetKeys.PCT_VT_BARRIO, 
+            DatasetKeys.OCUPACIONES_VT_PROV, DatasetKeys.PERNOCTACIONES_VT_PROV,
+            DatasetKeys.CONSUMO_FISICO_ESPERADO, DatasetKeys.TEMP_MEDIA, 
+            DatasetKeys.PRECIPITACION, DatasetKeys.NDVI_SATELITE
+        ]
+        feature_cols = [c for c in feature_cols if c in df_b_sc.columns]
+        if not feature_cols: return None
+        
+        seq_len = 12
+        group_data = df_b_sc[feature_cols].values
+        fechas_data = df_b_sc[DatasetKeys.FECHA].values
+        if len(group_data) < seq_len: return None
+        
+        model = LSTMAutoencoder(num_features=len(feature_cols), hidden_dim=128, latent_dim=16, seq_len=seq_len)
+        try:
+            model.load_state_dict(torch.load(model_path, map_location="cpu", weights_only=True))
+        except TypeError: # Retrocompatibilidad con PyTorch antiguo
+            model.load_state_dict(torch.load(model_path, map_location="cpu"))
+        model.eval()
+        
+        idx_ratio = feature_cols.index(DatasetKeys.CONSUMO_RATIO)
+        min_val = df_full[DatasetKeys.CONSUMO_RATIO].min()
+        max_val = df_full[DatasetKeys.CONSUMO_RATIO].max()
+        if min_val == max_val: max_val = min_val + 1e-5
+        
+        fechas_reconst = []
+        valores_reconst = []
+        
+        with torch.no_grad():
+            for i in range(len(group_data) - seq_len + 1):
+                seq = group_data[i : i + seq_len]
+                seq_tensor = torch.tensor(seq, dtype=torch.float32).unsqueeze(0)
+                reconstruction = model(seq_tensor).squeeze(0).numpy()
+                
+                # Igual que el NoteBook: Reconstruimos la curva
+                if i == 0:
+                    for j in range(seq_len):
+                        val_sc = reconstruction[j, idx_ratio]
+                        valores_reconst.append(val_sc * (max_val - min_val) + min_val)
+                        fechas_reconst.append(fechas_data[i + j])
+                else:
+                    val_sc = reconstruction[-1, idx_ratio]
+                    valores_reconst.append(val_sc * (max_val - min_val) + min_val)
+                    fechas_reconst.append(fechas_data[i + seq_len - 1])
+                    
+        return pd.DataFrame({DatasetKeys.FECHA: fechas_reconst, "ae_reconstruction": valores_reconst})
+    except Exception as e:
+        print(f"Error cargando Autoencoder en Dashboard: {e}")
+        return None
 
 def render_anomaly_panel(df: pd.DataFrame, barrio: str):
-    """
-    Renderiza el sidebar con información detallada del barrio seleccionado.
-
-    Parameters
-    ----------
-    df : pd.DataFrame  — DataFrame completo (serie temporal, sin agregar)
-    barrio : str       — Nombre del barrio seleccionado
-    """
-    df_barrio = df[df[DatasetKeys.BARRIO] == barrio].copy()
-
-    if df_barrio.empty:
-        st.warning(f"No hay datos para el barrio **{barrio}**")
-    # 1. Filtrar datos del barrio seleccionado
-    df_b = df[df[DatasetKeys.BARRIO] == barrio].copy()
+    # 1. Filtrar datos del barrio seleccionado (resolviendo prefijos como "01 - ")
+    barrios_limpios = df[DatasetKeys.BARRIO].str.split("-", n=1).str[-1].str.strip().str.upper()
+    df_b = df[barrios_limpios == barrio].copy()
     
     st.markdown(f"### 🔎 Análisis: {barrio}")
     st.markdown("<hr style='margin: 0.5em 0; border-color: rgba(76,201,240,0.2);'/>", unsafe_allow_html=True)
@@ -38,183 +106,116 @@ def render_anomaly_panel(df: pd.DataFrame, barrio: str):
         st.info("No hay datos disponibles para este barrio en el periodo seleccionado.")
         return
 
-    df_barrio = df_barrio.sort_values(DatasetKeys.FECHA)
-    df_b = df_b.sort_values(DatasetKeys.FECHA)
-
-    # ─── KPIs principales ────────────────────────────────────────────────
-    st.markdown(f"### 📍 {barrio}")
-    st.markdown("---")
-    # 2. KPIs Principales
-    consumo_total = df_b[DatasetKeys.CONSUMO].sum()
-    
-    # Determinar qué columna usar como base de consumo esperado
+    # --- FIX: Agrupación temporal estricta ---
+    # Agrupamos por mes para sumar todos los tipos de USO (Doméstico, Comercial...)
+    # Esto elimina el efecto "zig-zag" (líneas salteadas) y arregla la escala del gráfico.
     esperado_col = DatasetKeys.PREDICCION_FOURIER if DatasetKeys.PREDICCION_FOURIER in df_b.columns else DatasetKeys.CONSUMO_FISICO_ESPERADO
-    esperado_total = df_b[esperado_col].sum() if esperado_col in df_b.columns else 0
     
-    alertas = df_b["ALERTA_TURISTICA_ILEGAL"].sum() if "ALERTA_TURISTICA_ILEGAL" in df_b.columns else 0
+    agg_dict = {
+        DatasetKeys.CONSUMO: 'sum',
+        DatasetKeys.NUM_CONTRATOS: 'sum',
+    }
+    if esperado_col in df_b.columns:
+        agg_dict[esperado_col] = 'sum'
+    if "ALERTA_TURISTICA_ILEGAL" in df_b.columns:
+        agg_dict["ALERTA_TURISTICA_ILEGAL"] = 'max' # Si algún "uso" dio alerta, se marca el mes
+    if "reconstruction_error" in df_b.columns:
+        agg_dict["reconstruction_error"] = 'mean'
+        
+    df_monthly = df_b.groupby(DatasetKeys.FECHA).agg(agg_dict).reset_index()
+    df_monthly = df_monthly.sort_values(DatasetKeys.FECHA)
 
-    total_consumo  = df_barrio[DatasetKeys.CONSUMO].sum()
-    avg_ratio      = df_barrio[DatasetKeys.CONSUMO_RATIO].mean() if DatasetKeys.CONSUMO_RATIO in df_barrio else None
-    pct_vt         = df_barrio[DatasetKeys.PCT_VT_BARRIO].mean() if DatasetKeys.PCT_VT_BARRIO in df_barrio else None
-    num_alertas    = int(df_barrio["ALERTA_TURISTICA_ILEGAL"].sum()) if "ALERTA_TURISTICA_ILEGAL" in df_barrio else 0
-    avg_error      = df_barrio["reconstruction_error"].mean() if "reconstruction_error" in df_barrio else None
+    # 2. KPIs Principales
+    consumo_total = df_monthly[DatasetKeys.CONSUMO].sum()
+    esperado_total = df_monthly[esperado_col].sum() if esperado_col in df_monthly.columns else 0
+    
+    # Recalcular ratios limpios tras la agrupación
+    contratos_safe = df_monthly[DatasetKeys.NUM_CONTRATOS].replace(0, 1)
+    df_monthly["ratio_real"] = df_monthly[DatasetKeys.CONSUMO] / contratos_safe
+    if esperado_col in df_monthly.columns:
+        df_monthly["ratio_esperado"] = df_monthly[esperado_col] / contratos_safe
+    else:
+        df_monthly["ratio_esperado"] = 0.0
+
+    # --- Integrar Reconstrucción del Autoencoder ---
+    df_ae = _get_ae_reconstruction(df, df_b, barrio)
+    usar_ae = False
+    if df_ae is not None and not df_ae.empty:
+        df_monthly = df_monthly.merge(df_ae, on=DatasetKeys.FECHA, how="left")
+        df_monthly["ratio_esperado_final"] = df_monthly["ae_reconstruction"].fillna(df_monthly["ratio_esperado"])
+        usar_ae = True
+    else:
+        df_monthly["ratio_esperado_final"] = df_monthly["ratio_esperado"]
+
+    alertas = df_monthly["ALERTA_TURISTICA_ILEGAL"].sum() if "ALERTA_TURISTICA_ILEGAL" in df_monthly.columns else 0
+
     c1, c2 = st.columns(2)
     c1.metric("Consumo Total", f"{consumo_total:,.0f} m³", 
               delta=f"{(consumo_total - esperado_total):+,.0f} m³ vs Esperado", delta_color="inverse")
     c2.metric("Alertas Detectadas", int(alertas), 
               delta="CRÍTICO" if alertas > 0 else "Normal", delta_color="inverse" if alertas > 0 else "normal")
 
-    col1, col2 = st.columns(2)
-    col1.metric("💧 Consumo Total", f"{total_consumo:,.0f} m³")
-    col2.metric("🚨 Alertas detectadas", num_alertas,
-                delta="⚠️ ALTO" if num_alertas > 3 else None,
-                delta_color="inverse")
-
-    col3, col4 = st.columns(2)
-    if avg_ratio is not None:
-        col3.metric("📊 Ratio Medio", f"{avg_ratio:.2f}")
-    if pct_vt is not None:
-        col4.metric("🏖 % VT", f"{pct_vt:.1f}%")
-    if avg_error is not None:
-        st.metric("🤖 Error Reconstrucción (LSTM-AE)", f"{avg_error:.4f}",
-                  delta="Alto" if avg_error > 0.15 else "Normal",
-                  delta_color="inverse" if avg_error > 0.15 else "off")
-
-    st.markdown("---")
-
-    # ─── Lista de anomalías ───────────────────────────────────────────────
-    if "ALERTA_TURISTICA_ILEGAL" in df_barrio.columns:
-        df_anomalias = df_barrio[df_barrio["ALERTA_TURISTICA_ILEGAL"] == True]
-        if not df_anomalias.empty:
-            st.markdown("#### 🔴 Periodos con Alerta")
-            for _, row in df_anomalias.iterrows():
-                fecha_str = row[DatasetKeys.FECHA].strftime("%b %Y") if hasattr(row[DatasetKeys.FECHA], "strftime") else str(row[DatasetKeys.FECHA])
-                error_val = row.get("reconstruction_error", 0)
-                st.markdown(
-                    f"""<div style="background:rgba(193,18,31,0.15); border-left:3px solid #c1121f;
-                    padding:6px 10px; border-radius:4px; margin:4px 0; font-size:12px;">
-                    📅 <b>{fecha_str}</b> — Error: <b>{error_val:.3f}</b>
-                    </div>""",
-                    unsafe_allow_html=True,
-                )
-        else:
-            st.success("✅ Sin alertas en el periodo seleccionado")
-
-    st.markdown("---")
-
-    # ─── Gráfico Real vs. Esperado ────────────────────────────────────────
-    # 3. Gráfico Comparativo: Consumo Real vs Esperado
-    st.markdown("#### 📈 Consumo Real vs. Esperado")
-
-    if DatasetKeys.CONSUMO_FISICO_ESPERADO not in df_barrio.columns:
-        st.info("Columna de consumo esperado no disponible.")
-        return
-
-    fechas = df_barrio[DatasetKeys.FECHA]
-    real   = df_barrio[DatasetKeys.CONSUMO]
-    esperado = df_barrio[DatasetKeys.CONSUMO_FISICO_ESPERADO]
-
-    # Marcadores de anomalía
-    if "ALERTA_TURISTICA_ILEGAL" in df_barrio.columns:
-        mask_anom = df_barrio["ALERTA_TURISTICA_ILEGAL"] == True
-        anom_x = fechas[mask_anom]
-        anom_y = real[mask_anom]
-    else:
-        anom_x = pd.Series([], dtype="datetime64[ns]")
-        anom_y = pd.Series([], dtype=float)
-
+    # 3. Gráfico Comparativo: Ratio Real vs Esperado
+    st.markdown("#### 📈 Ratio de Consumo Real vs. Esperado")
     
     fig = go.Figure()
 
-    # Área rellena "umbral físico" (1.5x esperado)
+    # Área base de Ratio Esperado (Añade una zona segura sombreada visualmente agradable)
     fig.add_trace(go.Scatter(
-        x=pd.concat([fechas, fechas[::-1]]),
-        y=pd.concat([esperado * 1.5, esperado[::-1]]),
-        fill="toself",
-        fillcolor="rgba(193,18,31,0.08)",
-        line=dict(color="rgba(0,0,0,0)"),
-        name="Zona Sospechosa (>1.5x esperado)",
-        showlegend=True,
+        x=df_monthly[DatasetKeys.FECHA], 
+        y=df_monthly["ratio_esperado_final"],
+        mode='lines', 
+        name='Esperado (Autoencoder)' if usar_ae else 'Ratio Esperado',
+        line=dict(color='#52b788', width=3, dash='dot'),
+        fill='tozeroy',
+        fillcolor='rgba(82, 183, 136, 0.1)',
+        line_shape='spline' # Suavizado elegante
     ))
-    # Línea de Consumo Esperado
-    if esperado_col in df_b.columns:
-        fig.add_trace(go.Scatter(
-            x=df_b[DatasetKeys.FECHA], 
-            y=df_b[esperado_col],
-            mode='lines', 
-            name='Consumo Esperado',
-            line=dict(color='#52b788', width=2, dash='dash')
-        ))
 
-    # Consumo esperado (modelo físico)
-    # Línea de Consumo Real
+    # Línea de Ratio Real
     fig.add_trace(go.Scatter(
-        x=fechas, y=esperado,
-        mode="lines",
-        line=dict(color="#52b788", width=2, dash="dash"),
-        name="Consumo Esperado (física)",
-        x=df_b[DatasetKeys.FECHA], 
-        y=df_b[DatasetKeys.CONSUMO],
+        x=df_monthly[DatasetKeys.FECHA], 
+        y=df_monthly["ratio_real"],
         mode='lines+markers', 
-        name='Consumo Real',
-        line=dict(color='#4cc9f0', width=2),
-        marker=dict(size=4)
+        name='Ratio Real',
+        line=dict(color='#4cc9f0', width=3),
+        marker=dict(size=6, symbol='circle', color='#0d1b2a', line=dict(color='#4cc9f0', width=2)),
+        line_shape='spline'
     ))
 
-    # Consumo real
-    fig.add_trace(go.Scatter(
-        x=fechas, y=real,
-        mode="lines+markers",
-        line=dict(color="#4cc9f0", width=2),
-        marker=dict(size=4),
-        name="Consumo Real",
-    ))
     # Resaltar puntos exactos de Anomalía
-    if "ALERTA_TURISTICA_ILEGAL" in df_b.columns:
-        df_anomalias = df_b[df_b["ALERTA_TURISTICA_ILEGAL"] == True]
+    if "ALERTA_TURISTICA_ILEGAL" in df_monthly.columns:
+        df_anomalias = df_monthly[df_monthly["ALERTA_TURISTICA_ILEGAL"] > 0]
         if not df_anomalias.empty:
             fig.add_trace(go.Scatter(
                 x=df_anomalias[DatasetKeys.FECHA], 
-                y=df_anomalias[DatasetKeys.CONSUMO],
+                y=df_anomalias["ratio_real"],
                 mode='markers', 
                 name='Anomalía Detectada',
-                marker=dict(color='#ff4b4b', size=10, symbol='x', line=dict(width=2, color='white')),
+                marker=dict(color='#ff4b4b', size=12, symbol='x', line=dict(width=2, color='#ff4b4b')),
                 hovertext=df_anomalias["reconstruction_error"].apply(lambda x: f"Error AE: {x:.3f}"),
                 hoverinfo="text+x+y"
             ))
 
-    # Puntos de anomalía
-    if not anom_x.empty:
-        fig.add_trace(go.Scatter(
-            x=anom_x, y=anom_y,
-            mode="markers",
-            marker=dict(color="#c1121f", size=10, symbol="star",
-                        line=dict(color="white", width=1)),
-            name="🚨 Anomalía detectada",
-        ))
-
     fig.update_layout(
         template="plotly_dark",
         paper_bgcolor="rgba(0,0,0,0)",
-        plot_bgcolor="rgba(13,27,42,0.6)",
         plot_bgcolor="rgba(255,255,255,0.02)",
         margin=dict(l=0, r=0, t=10, b=0),
-        legend=dict(font=dict(size=10), bgcolor="rgba(0,0,0,0)"),
-        xaxis=dict(title="", gridcolor="#2a3a4a"),
-        yaxis=dict(title="m³", gridcolor="#2a3a4a"),
-        height=300,
-        xaxis=dict(gridcolor="rgba(255,255,255,0.05)"),
-        yaxis=dict(gridcolor="rgba(255,255,255,0.05)", title="Metros Cúbicos (m³)", title_font=dict(size=11)),
+        xaxis=dict(gridcolor="rgba(255,255,255,0.05)", showgrid=True),
+        # FIX: Quitar rangemode="tozero" permite al gráfico hacer zoom a las fluctuaciones (no más líneas planas)
+        yaxis=dict(gridcolor="rgba(255,255,255,0.05)", title="m³ / contrato", title_font=dict(size=11)),
         legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1, font=dict(size=10)),
-        height=280
+        height=340,
+        hovermode="x unified"
     )
     st.plotly_chart(fig, use_container_width=True)
 
     # 4. Listado Tabular de Anomalías
     st.markdown("#### 🚨 Registro de Anomalías")
-    if "ALERTA_TURISTICA_ILEGAL" in df_b.columns and alertas > 0:
-        cols_to_show = [DatasetKeys.FECHA, DatasetKeys.CONSUMO, esperado_col, "reconstruction_error"]
-        cols_to_show = [c for c in cols_to_show if c in df_b.columns]
+    if "ALERTA_TURISTICA_ILEGAL" in df_monthly.columns and alertas > 0:
+        cols_to_show = [DatasetKeys.FECHA, "ratio_real", "ratio_esperado_final", "reconstruction_error"]
+        cols_to_show = [c for c in cols_to_show if c in df_monthly.columns]
         
         df_table = df_anomalias[cols_to_show].copy()
         df_table[DatasetKeys.FECHA] = df_table[DatasetKeys.FECHA].dt.strftime("%Y-%m")
@@ -222,11 +223,11 @@ def render_anomaly_panel(df: pd.DataFrame, barrio: str):
         # Formateo y renombrado visual
         df_table = df_table.rename(columns={
             DatasetKeys.FECHA: "Mes",
-            DatasetKeys.CONSUMO: "Real (m³)",
-            esperado_col: "Esperado (m³)",
+            "ratio_real": "Ratio Real",
+            "ratio_esperado_final": "Esperado (AE)" if usar_ae else "Ratio Esperado",
             "reconstruction_error": "Error Autoencoder"
         })
         
-        st.dataframe(df_table.style.format(precision=1), hide_index=True, use_container_width=True)
+        st.dataframe(df_table.style.format(precision=2), hide_index=True, use_container_width=True)
     else:
         st.success("✅ Sin comportamiento anómalo detectado en este periodo.")
