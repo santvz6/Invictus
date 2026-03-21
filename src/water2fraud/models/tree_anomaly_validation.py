@@ -1,6 +1,10 @@
 import numpy as np
 import pandas as pd
 import logging
+
+import matplotlib.pyplot as plt
+import seaborn as sns
+
 from sklearn.ensemble import IsolationForest, RandomForestClassifier
 from xgboost import XGBClassifier
 from sklearn.metrics import classification_report, confusion_matrix
@@ -152,5 +156,27 @@ class TreeModelValidator:
         # Movemos la leyenda fuera del gráfico para que no tape los puntos
         axes[1].legend(bbox_to_anchor=(1.05, 1), loc='upper left')
         
+        plt.tight_layout()
+        plt.show()
+
+    @staticmethod
+    def plot_tree_importance(tree_model, feature_names):
+        # 1. Calculamos la importancia agrupada en una sola línea (Vectorizado)
+        importancias = tree_model.feature_importances_
+        # Sumamos cada n variables (asumiendo que feature_names tiene el tamaño original, ej. 7)
+        n = len(feature_names)
+        imp_agrupada = [sum(importancias[i::n]) for i in range(n)]
+
+        # 2. Creamos y ordenamos el DataFrame
+        df_imp = pd.DataFrame({'Variable': feature_names, 'Importancia': imp_agrupada})
+        df_imp = df_imp.sort_values('Importancia', ascending=False)
+
+        # 3. Plot
+        plt.figure(figsize=(10, 5))
+        sns.barplot(data=df_imp, x='Importancia', y='Variable', hue='Variable', palette='viridis', legend=False)
+        
+        plt.title(f"Variables clave: {tree_model.__class__.__name__}")
+        plt.xlabel("Importancia Acumulada")
+        plt.ylabel("")
         plt.tight_layout()
         plt.show()
