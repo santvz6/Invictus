@@ -1,54 +1,49 @@
-# PyTorch Core
+# ==========================================
+# REQUERIMIENTOS DEL PROYECTO
+# ==========================================
+
+# --- Core Machine Learning & Deep Learning ---
 torch
 torchvision
-
 scikit-learn
 pandas
-
 xgboost
 
-matplotlib
-seaborn
-
-# TimeSeries
+# --- Series Temporales ---
 tslearn
 h5py
 
-# Explicabilidad
+# --- Explicabilidad e Interpretabilidad ---
 shap
 
-# Para evitar conflictos de github en los .ipynb 
-nbstripout
-# una vez instalado ejecutamos (en la terminal):
-# nbstripout --install
+# --- Utilidades de Desarrollo ---
+# Evita conflictos de git al limpiar el output de los notebooks
+nbstripout 
+# Nota: Tras instalar, ejecutar en terminal: nbstripout --install
 
-# YAML
+# Manejo de configuración
 pyyaml
 
-# --- Visualización ---
-
-# Manual Map
-osmnx
-thefuzz
+# --- Procesamiento y Visualización Geoespacial ---
+# Geometría y Geocodificación
 shapely
 geopy
-
-# Json Map
-plotly
-
-# Final Map
-folium
+geopandas
 mapclassify
 
-# VERSIONES ESPECÍFICAS
-# 
-# torch==2.5.1+cu121
-# torchvision==0.20.1+cu121
-# --extra-index-url https://download.pytorch.org/whl/cu121
-# 
-# scikit-learn==1.8.0
-# 
-# pandas==3.0.0
-# 
-# matplotlib==3.10.8
-# seaborn==0.13.2
+# Análisis de Redes Urbanas y Strings
+osmnx
+thefuzz
+
+# Visualización Estática
+matplotlib
+seaborn
+
+# Visualización Interactiva (JSON & Maps)
+plotly
+folium
+branca
+
+# --- Dashboard e Interfaz de Usuario ---
+streamlit
+streamlit-folium

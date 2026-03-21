@@ -72,6 +72,10 @@ class INETourismProcessor:
     @staticmethod
     def _map_mun2barrios():
         df_mun = pd.read_csv(Paths.INE_MUNICIPIOS_PLAZAS, encoding="latin1", sep="\t")
+        if not Paths.MAPPING_BARRIOS.exists():
+            from src.config.barrio_mapping import export_yaml_to_csv
+            export_yaml_to_csv()
+            
         df_mapping = pd.read_csv(Paths.MAPPING_BARRIOS, sep=";")
         
         # Limpieza de fechas: Creamos 'fecha_cruce_mensual'

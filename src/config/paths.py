@@ -14,64 +14,59 @@ class Paths:
     EXPERIMENTS_DIR = INTERNAL / "experiments"
     LOGS_DIR = INTERNAL / "logs"
     TEMP_DIR = INTERNAL / "temp"
-    
+    PROC_DIR = INTERNAL / "processed"
 
     ### --- Estructura de Datos Base --- ###
     DATA_DIR = INTERNAL / "data"
-    PROC_DIR = DATA_DIR / "processed"
-    RAW_DIR = DATA_DIR / "raw"
-    EXT_DIR = DATA_DIR / "external"
     CONFIG_DIR = DATA_DIR / "config"
 
     ## --- CONFIG ---
     MAPPING_BARRIOS = CONFIG_DIR / "mapping_barrios.csv"
     MAPPING_BARRIOS_YAML = CONFIG_DIR / "mapping_barrios.yaml"
     
-    ## --- RAW --- ##
-    RAW_CSV_DIR = RAW_DIR / "csv"
-    RAW_JSON_DIR = RAW_DIR / "json"
+    ## --- AMAEM --- ##
+    AMAEM_DIR = DATA_DIR / "amaem"
+    AMAEM_CSV_DIR  = AMAEM_DIR / "csv"
+    AMAEM_JSON_DIR = AMAEM_DIR / "json"
     # --- CSV --- #
-    RAW_CSV_AMAEM = RAW_CSV_DIR / "AMAEM-2022-2024.csv"
-    RAW_CSV_TELELECTURA = RAW_CSV_DIR / "contadores-telelectura-instalados.csv"
+    RAW_CSV_AMAEM = AMAEM_CSV_DIR / "AMAEM-2022-2024.csv"
+    RAW_CSV_TELELECTURA = AMAEM_CSV_DIR / "contadores-telelectura-instalados.csv"
     # ... (el resto de los CSVs) ...
     # ----  JSON --- #
-    RAW_JSON_BOCAS_HIDRANTES         = RAW_JSON_DIR / "bocas-de-hidrantes.json"
-    RAW_JSON_CENTROS_BOMBEO          = RAW_JSON_DIR / "centros-de-bombeo.json"
-    RAW_JSON_DEPOSITOS               = RAW_JSON_DIR / "depositos.json"
-    RAW_JSON_ENTIDADES_POBLACION     = RAW_JSON_DIR / "entidades-de-poblacion.json"
-    RAW_JSON_FUENTES                 = RAW_JSON_DIR / "fuentes.json"
-    RAW_JSON_GRANDES_COLECTORES      = RAW_JSON_DIR / "grandes-colectores.json"
-    RAW_JSON_IMBORNALES_GRAN         = RAW_JSON_DIR / "imbornales-de-gran-capacidad.json"
-    RAW_JSON_IMBORNALES              = RAW_JSON_DIR / "imbornales.json"
-    RAW_JSON_PLUVIOMETROS            = RAW_JSON_DIR / "pluviometros.json"
-    RAW_JSON_REDES_ARTERIALES        = RAW_JSON_DIR / "redes-arteriales.json"
-    RAW_JSON_REDES_PRIMARIAS         = RAW_JSON_DIR / "redes-primarias.json"
-    RAW_JSON_SECTORES_CONSUMO        = RAW_JSON_DIR / "sectores-de-consumo.json"
-    RAW_JSON_TUBERIAS_REGENERADA     = RAW_JSON_DIR / "tuberias-agua-regenerada.json"
-    RAW_JSON_TUBERIAS_ALCANTARILLADO = RAW_JSON_DIR / "tuberias-de-alcantarillado-y-pluviales.json"
-    RAW_JSON_ZONAS_VERDES            = RAW_JSON_DIR / "zonas-verdes.json"
+    RAW_JSON_BOCAS_HIDRANTES         = AMAEM_JSON_DIR / "bocas-de-hidrantes.json"
+    RAW_JSON_CENTROS_BOMBEO          = AMAEM_JSON_DIR / "centros-de-bombeo.json"
+    RAW_JSON_DEPOSITOS               = AMAEM_JSON_DIR / "depositos.json"
+    RAW_JSON_ENTIDADES_POBLACION     = AMAEM_JSON_DIR / "entidades-de-poblacion.json"
+    RAW_JSON_FUENTES                 = AMAEM_JSON_DIR / "fuentes.json"
+    RAW_JSON_GRANDES_COLECTORES      = AMAEM_JSON_DIR / "grandes-colectores.json"
+    RAW_JSON_IMBORNALES_GRAN         = AMAEM_JSON_DIR / "imbornales-de-gran-capacidad.json"
+    RAW_JSON_IMBORNALES              = AMAEM_JSON_DIR / "imbornales.json"
+    RAW_JSON_PLUVIOMETROS            = AMAEM_JSON_DIR / "pluviometros.json"
+    RAW_JSON_REDES_ARTERIALES        = AMAEM_JSON_DIR / "redes-arteriales.json"
+    RAW_JSON_REDES_PRIMARIAS         = AMAEM_JSON_DIR / "redes-primarias.json"
+    RAW_JSON_SECTORES_CONSUMO        = AMAEM_JSON_DIR / "sectores-de-consumo.json"
+    RAW_JSON_TUBERIAS_REGENERADA     = AMAEM_JSON_DIR / "tuberias-agua-regenerada.json"
+    RAW_JSON_TUBERIAS_ALCANTARILLADO = AMAEM_JSON_DIR / "tuberias-de-alcantarillado-y-pluviales.json"
+    RAW_JSON_ZONAS_VERDES            = AMAEM_JSON_DIR / "zonas-verdes.json"
 
     ## --- PROCESSED --- ##
-    PROC_CSV_DIR = PROC_DIR / "csv"
-    PROC_JSON_DIR = PROC_DIR / "json"
-    # --- CSV --- #
-    PROC_CSV_STEP1_AMAEM = PROC_CSV_DIR / "step1_amaem.csv"
-    PROC_CSV_STEP2_INE = PROC_CSV_DIR / "step2_ine.csv"
-    PROC_CSV_STEP3_AEMET = PROC_CSV_DIR / "step3_aemet.csv"
-    PROC_CSV_STEP4_FISICOS = PROC_CSV_DIR / "step4_fisicos.csv"
-    PROC_CSV_STEP5_SENTINEL = PROC_CSV_DIR / "step5_sentinel.csv"
-    PROC_CSV_AMAEM_SCALED = PROC_CSV_DIR / "AMAEM-2022-2024.csv"
-    PROC_CSV_AMAEM_NOT_SCALED = PROC_CSV_DIR / "AMAEM-2022-2024_not_scaled.csv"
+    PROC_CSV_STEP1_AMAEM = PROC_DIR / "step1_amaem.csv"
+    PROC_CSV_STEP2_INE = PROC_DIR / "step2_ine.csv"
+    PROC_CSV_STEP3_AEMET = PROC_DIR / "step3_aemet.csv"
+    PROC_CSV_STEP4_FISICOS = PROC_DIR / "step4_fisicos.csv"
+    PROC_CSV_STEP5_SENTINEL = PROC_DIR / "step5_sentinel.csv"
+    PROC_CSV_AMAEM_SCALED = PROC_DIR / "AMAEM-2022-2024_scaled.csv"
+    PROC_CSV_AMAEM_NOT_SCALED = PROC_DIR / "AMAEM-2022-2024_not_scaled.csv"
     
     ## --- EXTERNAL --- ##
 
     # --- GVA --- #
-    GVA_DIR = EXT_DIR / "gva"
+    GVA_DIR = DATA_DIR / "gva"
     GVA_VIVIENDAS = GVA_DIR / "m-viviendas-2022-2025.csv"
     GVA_HOTELES   = GVA_DIR / "m-hoteles-2022-2026.csv"
 
     # --- INE --- #
-    INE_DIR = EXT_DIR / "ine"
+    INE_DIR = DATA_DIR / "ine"
 
     INE_COMUNIDAD_TIPO_ALOJ = INE_DIR / "comunidad-info-tipo-aloj.csv"
     INE_COMUNIDAD_TOTAL     = INE_DIR / "comunidad-info-total.csv"
@@ -81,11 +76,11 @@ class Paths:
     INE_PROVINCIA_VT        = INE_DIR / "provincia-info-vt.csv"
 
     # --- AEMET ---
-    AEMET_DIR               = EXT_DIR / "aemet"
+    AEMET_DIR               = DATA_DIR / "aemet"
     AEMET_CLIMA_BARRIOS     = AEMET_DIR / "clima_barrios_alicante_final.csv"
 
     # --- SENTINEL ---
-    SENTINEL_DIR  = EXT_DIR / "sentinel"
+    SENTINEL_DIR  = DATA_DIR / "sentinel"
     SENTINEL_NDVI = SENTINEL_DIR / "ndvi_alicante.csv"
 
     @classmethod
@@ -94,7 +89,7 @@ class Paths:
             cls.INTERNAL,
             cls.DATA_DIR,  cls.EXPERIMENTS_DIR, cls.LOGS_DIR, cls.TEMP_DIR, 
             cls.CONFIG_DIR,
-            cls.PROC_DIR, cls.PROC_CSV_DIR, cls.PROC_JSON_DIR
+            cls.PROC_DIR, cls.PROC_DIR
         ]
         for d in dirs:
             d.mkdir(parents=True, exist_ok=True)
