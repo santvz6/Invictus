@@ -77,7 +77,13 @@ def _add_choropleth(m, gdf, df_barrio, feature_col):
     df_temp = df_barrio.copy()
     df_temp["barrio_limpio"] = df_temp[DatasetKeys.BARRIO].str.split("-", n=1).str[-1].str.strip().str.upper()
 
-    gdf_merged = gdf_merged.merge(df_temp, on="barrio_limpio", how="left")
+    # FIX: Un inner merge asegura que eliminemos los polígonos que NO están en nuestros datos 
+    # protegiendo los barrios que realmente utilizamos.
+    gdf_merged = gdf_merged.merge(df_temp, on="barrio_limpio", how="inner")
+    
+    if gdf_merged.empty:
+        return
+        
     gdf_merged[feature_col] = gdf_merged[feature_col].fillna(0)
     
     for col in ["reconstruction_error", "ALERTA_TURISTICA_ILEGAL"]:

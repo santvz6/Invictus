@@ -256,7 +256,7 @@ with tab_mapa:
                 props.get("popup") or
                 props.get("barrio")
             )
-            if nombre_click:
+            if nombre_click and st.session_state.barrio_seleccionado != nombre_click.upper():
                 st.session_state.barrio_seleccionado = nombre_click.upper()
                 st.rerun()
 
