@@ -55,6 +55,7 @@ class Paths:
     PROC_CSV_STEP3_AEMET = PROC_DIR / "step3_aemet.csv"
     PROC_CSV_STEP4_FISICOS = PROC_DIR / "step4_fisicos.csv"
     PROC_CSV_STEP5_SENTINEL = PROC_DIR / "step5_sentinel.csv"
+    PROC_CSV_STEP6_GVA = PROC_DIR / "step6_gva.csv"
     PROC_CSV_AMAEM_SCALED = PROC_DIR / "AMAEM-2022-2024_scaled.csv"
     PROC_CSV_AMAEM_NOT_SCALED = PROC_DIR / "AMAEM-2022-2024_not_scaled.csv"
     
@@ -62,8 +63,8 @@ class Paths:
 
     # --- GVA --- #
     GVA_DIR = DATA_DIR / "gva"
-    GVA_VIVIENDAS = GVA_DIR / "m-viviendas-2022-2025.csv"
-    GVA_HOTELES   = GVA_DIR / "m-hoteles-2022-2026.csv"
+    GVA_VIVIENDAS = GVA_DIR / "municipios-vt-2022-2024.csv"
+    GVA_HOTELES   = GVA_DIR / "municipios-hoteles-2022-2024.csv"
 
     # --- INE --- #
     INE_DIR = DATA_DIR / "ine"

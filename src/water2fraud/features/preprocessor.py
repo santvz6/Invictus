@@ -6,6 +6,7 @@ from src.water2fraud.features.ine_tourism_processor import INETourismProcessor
 from src.water2fraud.features.aemet_processor import AEMETProcessor
 from src.water2fraud.features.fisicos_processor import FisicosProcessor
 from src.water2fraud.features.sentinel_processor import SentinelProcessor
+from src.water2fraud.features.gva_processor import GVAProcessor
 from src.config import get_logger, DatasetKeys, Paths
 logger = get_logger(__name__)
 
@@ -50,10 +51,10 @@ class WaterPreprocessor:
             DatasetKeys.MES_COS,
 
             # INE - TOURISM
-            DatasetKeys.NUM_VT_BARRIO,     
-            DatasetKeys.PCT_VT_BARRIO,
-            DatasetKeys.OCUPACIONES_VT_PROV,    
-            DatasetKeys.PERNOCTACIONES_VT_PROV,  
+            DatasetKeys.NUM_VT_BARRIO_INE,     
+            DatasetKeys.PCT_VT_BARRIO_INE,
+            DatasetKeys.OCUP_VT_PROV_INE,    
+            DatasetKeys.PERNOCT_VT_PROV_INE,  
 
             # FÍSICOS
             DatasetKeys.CONSUMO_FISICO_ESPERADO, 
@@ -63,7 +64,16 @@ class WaterPreprocessor:
             DatasetKeys.PRECIPITACION,
             
             # SENTINEL
-            DatasetKeys.NDVI_SATELITE
+            DatasetKeys.NDVI_SATELITE,
+            
+            # GVA
+            DatasetKeys.NUM_VT_BARRIO_GVA,
+            DatasetKeys.PLAZAS_VIVIENDAS_GVA,
+            DatasetKeys.NUM_HOTELES_BARRIO_GVA,
+            DatasetKeys.PLAZAS_HOTELES_BARRIO_GVA,
+            
+            # ENGINEERED FEATURES
+            DatasetKeys.NUM_VT_ILEGALES
         ]
         
         # Asegurar que solo usamos características que existan realmente en el DataFrame
@@ -121,14 +131,19 @@ class WaterPreprocessor:
         # ? o para algunos es mejor StandardScaler
         cols_to_scale = [
             DatasetKeys.CONSUMO_RATIO,
-            DatasetKeys.NUM_VT_BARRIO,
-            DatasetKeys.PCT_VT_BARRIO,
-            DatasetKeys.OCUPACIONES_VT_PROV,
-            DatasetKeys.PERNOCTACIONES_VT_PROV,
+            DatasetKeys.NUM_VT_BARRIO_INE,
+            DatasetKeys.PCT_VT_BARRIO_INE,
+            DatasetKeys.OCUP_VT_PROV_INE,
+            DatasetKeys.PERNOCT_VT_PROV_INE,
             DatasetKeys.TEMP_MEDIA,
             DatasetKeys.PRECIPITACION,
             DatasetKeys.CONSUMO_FISICO_ESPERADO,
-            DatasetKeys.NDVI_SATELITE
+            DatasetKeys.NDVI_SATELITE,
+            DatasetKeys.NUM_VT_BARRIO_GVA,
+            DatasetKeys.PLAZAS_VIVIENDAS_GVA,
+            DatasetKeys.NUM_HOTELES_BARRIO_GVA,
+            DatasetKeys.PLAZAS_HOTELES_BARRIO_GVA,
+            DatasetKeys.NUM_VT_ILEGALES
         ]
         
         # Filtramos por seguridad
@@ -144,23 +159,69 @@ class WaterPreprocessor:
         df[DatasetKeys.MES_COS] = (np.cos(2 * np.pi * meses / 12) + 1) / 2
 
         return df
+
+    @staticmethod
+    def _engineer_features(df: pd.DataFrame) -> pd.DataFrame:
+        """
+        Calcula características derivadas complejas cruzando múltiples fuentes.
+        Reparte el total de la provincia registrado en la GVA hacia los barrios
+        usando las ponderaciones del INE y estima el gap de viviendas ilegales.
+        """
+        logger.info("Calculando variables derivadas (Reparto ponderado GVA e Ilegalidad)...")
+        df = df.copy()
+
+        # 1. Obtenemos una fila única por Barrio y Fecha para no duplicar sumas al iterar por Usos
+        df_unique = df.drop_duplicates(subset=[DatasetKeys.FECHA, DatasetKeys.BARRIO]).copy()
+        
+        # 2. Calculamos el total de VT del INE por mes para toda la ciudad
+        total_ine_mes = df_unique.groupby(DatasetKeys.FECHA)[DatasetKeys.NUM_VT_BARRIO_INE].transform('sum')
+        
+        # 3. Calculamos la cuota (porcentaje) que le corresponde a cada barrio
+        df_unique['pct_barrio'] = df_unique[DatasetKeys.NUM_VT_BARRIO_INE] / total_ine_mes.replace(0, 1)
+        
+        # 4. Traemos el porcentaje de vuelta al dataframe principal
+        df = pd.merge(df, df_unique[[DatasetKeys.FECHA, DatasetKeys.BARRIO, 'pct_barrio']], 
+                      on=[DatasetKeys.FECHA, DatasetKeys.BARRIO], how='left')
+
+        # 5. Distribuimos los totales de la GVA según la cuota de cada barrio
+        cols_gva = [
+            DatasetKeys.NUM_VT_BARRIO_GVA,
+            DatasetKeys.PLAZAS_VIVIENDAS_GVA,
+            DatasetKeys.NUM_HOTELES_BARRIO_GVA,
+            DatasetKeys.PLAZAS_HOTELES_BARRIO_GVA
+        ]
+        
+        for col in cols_gva:
+            if col in df.columns:
+                df[col] = (df[col] * df['pct_barrio']).round(2)
+
+        # 6. Calcular Viviendas Ilegales (Estimación INE - Registros Oficiales GVA ponderados)
+        df[DatasetKeys.NUM_VT_ILEGALES] = (df[DatasetKeys.NUM_VT_BARRIO_INE] - df[DatasetKeys.NUM_VT_BARRIO_GVA]).clip(lower=0)
+
+        df = df.drop(columns=['pct_barrio'])
+        return df
     
     @staticmethod
     def _save_processed_df(df: pd.DataFrame, df_scaled: pd.DataFrame) -> pd.DataFrame:
         """Persiste el DataFrame preprocesado en disco en formato CSV."""
         df.to_csv(Paths.PROC_CSV_AMAEM_NOT_SCALED, index=False)
         df_scaled.to_csv(Paths.PROC_CSV_AMAEM_SCALED, index=False)
-        
+    
     @staticmethod
     def process_raw_data(df: pd.DataFrame) -> pd.DataFrame:
         """Pipeline principal de limpieza que orquesta los pasos de preprocesamiento de un DataFrame crudo."""
         df = df.copy()
         
         df = AMAEMProcessor.process(df)
+        # Turismo
         df = INETourismProcessor.process(df)
+        df = GVAProcessor.process(df)
+        # Clima
         df = AEMETProcessor.process(df)
-        df = FisicosProcessor.process(df)
         df = SentinelProcessor.process(df)
+        df = FisicosProcessor.process(df)
+
+        df = WaterPreprocessor._engineer_features(df)
 
         df_scaled = WaterPreprocessor._scale_features(df)
         WaterPreprocessor._save_processed_df(df, df_scaled)

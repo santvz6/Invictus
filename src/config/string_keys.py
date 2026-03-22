@@ -26,11 +26,19 @@ class DatasetKeys:
     NDVI_SATELITE           = "ndvi_satelite"
     
     # --- Columnas Externas (INE Turismo) ---
-    NUM_VT_BARRIO           = "num_vt_barrio"
-    PCT_VT_BARRIO           = "porcentaje_vt_barrio %"
-    OCUPACIONES_VT_PROV     = "ocupaciones_vt_prov"
-    PERNOCTACIONES_VT_PROV  = "pernoctaciones_vt_prov"
+    NUM_VT_BARRIO_INE       = "num_vt_barrio"
+    PCT_VT_BARRIO_INE       = "porcentaje_vt_barrio %"
+    OCUP_VT_PROV_INE        = "ocupaciones_vt_prov"
+    PERNOCT_VT_PROV_INE     = "pernoctaciones_vt_prov"
 
     # --- Columnas Externas (AEMET) ---
     TEMP_MEDIA              = "temperatura_media"
     PRECIPITACION           = "precipitacion"
+
+    # --- Columnas Externas (GVA) ---
+    NUM_VT_BARRIO_GVA       = "num_viviendas_barrio_gva"
+    NUM_HOTELES_BARRIO_GVA  = "num_hoteles_barrio_gva"
+    NUM_VT_ILEGALES         = "num_vt_ilegales"
+
+    PLAZAS_VIVIENDAS_GVA      = "plazas_viviendas_barrio_gva"
+    PLAZAS_HOTELES_BARRIO_GVA = "plazas_hoteles_barrio_gva"

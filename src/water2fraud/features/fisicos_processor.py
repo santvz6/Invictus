@@ -53,8 +53,8 @@ class FisicosProcessor:
 
         exogenas_potenciales = [
             DatasetKeys.TEMP_MEDIA, DatasetKeys.PRECIPITACION,
-            DatasetKeys.NUM_VT_BARRIO, DatasetKeys.PCT_VT_BARRIO,
-            DatasetKeys.OCUPACIONES_VT_PROV, DatasetKeys.PERNOCTACIONES_VT_PROV
+            DatasetKeys.NUM_VT_BARRIO_INE, DatasetKeys.PCT_VT_BARRIO_INE,
+            DatasetKeys.OCUP_VT_PROV_INE, DatasetKeys.PERNOCT_VT_PROV_INE
         ]
         exogenas = [col for col in exogenas_potenciales if col in df.columns]
         for col in exogenas:

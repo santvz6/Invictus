@@ -51,7 +51,7 @@ class INETourismProcessor:
         )
 
         # Rellenar posibles nulos generados por el cruce con 0
-        cols_ine = [DatasetKeys.NUM_VT_BARRIO, DatasetKeys.PCT_VT_BARRIO, DatasetKeys.OCUPACIONES_VT_PROV, DatasetKeys.PERNOCTACIONES_VT_PROV]
+        cols_ine = [DatasetKeys.NUM_VT_BARRIO_INE, DatasetKeys.PCT_VT_BARRIO_INE, DatasetKeys.OCUP_VT_PROV_INE, DatasetKeys.PERNOCT_VT_PROV_INE]
         for col in cols_ine:
             if col in df_final.columns:
                 df_final[col] = df_final[col].fillna(0)
@@ -91,9 +91,9 @@ class INETourismProcessor:
         df_weighted = pd.merge(df_mapping, df_mun_data, left_on='municipio', right_on='Municipios')
         df_weighted['peso'] = pd.to_numeric(df_weighted['peso'], errors='coerce').fillna(0)
         df_weighted['Total_vt_municipio'] = pd.to_numeric(df_weighted['Total_vt_municipio'], errors='coerce').fillna(0)
-        df_weighted[DatasetKeys.NUM_VT_BARRIO] = df_weighted['Total_vt_municipio'] * df_weighted['peso']
+        df_weighted[DatasetKeys.NUM_VT_BARRIO_INE] = df_weighted['Total_vt_municipio'] * df_weighted['peso']
 
-        df_barrio = df_weighted.groupby([DatasetKeys.BARRIO, 'fecha_cruce_mensual'])[DatasetKeys.NUM_VT_BARRIO].sum().reset_index()
+        df_barrio = df_weighted.groupby([DatasetKeys.BARRIO, 'fecha_cruce_mensual'])[DatasetKeys.NUM_VT_BARRIO_INE].sum().reset_index()
         return df_barrio
     
     @staticmethod
@@ -109,11 +109,11 @@ class INETourismProcessor:
 
         def interpolate_group(group):
             group = group.set_index('fecha_cruce_mensual').reindex(rango_completo)
-            if DatasetKeys.NUM_VT_BARRIO in group.columns:
-                group[DatasetKeys.NUM_VT_BARRIO] = group[DatasetKeys.NUM_VT_BARRIO].interpolate(method='linear')
+            if DatasetKeys.NUM_VT_BARRIO_INE in group.columns:
+                group[DatasetKeys.NUM_VT_BARRIO_INE] = group[DatasetKeys.NUM_VT_BARRIO_INE].interpolate(method='linear')
             return group.loc['2022-01':'2024-12']
 
-        df_interpolated = (df_merge[[DatasetKeys.BARRIO, 'fecha_cruce_mensual', DatasetKeys.NUM_VT_BARRIO]]
+        df_interpolated = (df_merge[[DatasetKeys.BARRIO, 'fecha_cruce_mensual', DatasetKeys.NUM_VT_BARRIO_INE]]
                            .groupby(DatasetKeys.BARRIO, group_keys=True)
                            .apply(interpolate_group, include_groups=False)
                            .reset_index()
@@ -123,11 +123,11 @@ class INETourismProcessor:
     @staticmethod
     def _porcentaje_vt(df_amaem_dom, df_interpolated):
         df_resampled = pd.merge(df_interpolated, df_amaem_dom, on=[DatasetKeys.BARRIO, 'fecha_cruce_mensual'], how='left')
-        df_resampled[DatasetKeys.PCT_VT_BARRIO] = ((df_resampled[DatasetKeys.NUM_VT_BARRIO] / df_resampled[DatasetKeys.NUM_CONTRATOS]) * 100)
-        df_resampled[DatasetKeys.PCT_VT_BARRIO] = df_resampled[DatasetKeys.PCT_VT_BARRIO].fillna(0).round(2)
-        df_resampled[DatasetKeys.NUM_VT_BARRIO] = df_resampled[DatasetKeys.NUM_VT_BARRIO].round().astype(int)
+        df_resampled[DatasetKeys.PCT_VT_BARRIO_INE] = ((df_resampled[DatasetKeys.NUM_VT_BARRIO_INE] / df_resampled[DatasetKeys.NUM_CONTRATOS]) * 100)
+        df_resampled[DatasetKeys.PCT_VT_BARRIO_INE] = df_resampled[DatasetKeys.PCT_VT_BARRIO_INE].fillna(0).round(2)
+        df_resampled[DatasetKeys.NUM_VT_BARRIO_INE] = df_resampled[DatasetKeys.NUM_VT_BARRIO_INE].round().astype(int)
 
-        return df_resampled[[DatasetKeys.BARRIO, 'fecha_cruce_mensual', DatasetKeys.NUM_VT_BARRIO, DatasetKeys.PCT_VT_BARRIO]]
+        return df_resampled[[DatasetKeys.BARRIO, 'fecha_cruce_mensual', DatasetKeys.NUM_VT_BARRIO_INE, DatasetKeys.PCT_VT_BARRIO_INE]]
 
     @staticmethod
     def _process_municipios(df_amaem: pd.DataFrame) -> pd.DataFrame:
@@ -154,15 +154,15 @@ class INETourismProcessor:
         
         df_prov = df_prov.rename(columns={
             "fecha": "fecha_orig",
-            "total_numero_de_alojamientos_turisticos_ocupados": DatasetKeys.OCUPACIONES_VT_PROV,
-            "numero_de_noches_ocupadas": DatasetKeys.PERNOCTACIONES_VT_PROV
+            "total_numero_de_alojamientos_turisticos_ocupados": DatasetKeys.OCUP_VT_PROV_INE,
+            "numero_de_noches_ocupadas": DatasetKeys.PERNOCT_VT_PROV_INE
         })
 
         # Creamos 'fecha_cruce_mensual'
         df_prov['fecha_cruce_mensual'] = pd.to_datetime(df_prov['fecha_orig'].str.replace('M', '-')).dt.to_period('M')
-        df_prov_clean = df_prov[['fecha_cruce_mensual', DatasetKeys.OCUPACIONES_VT_PROV, DatasetKeys.PERNOCTACIONES_VT_PROV]].copy()
+        df_prov_clean = df_prov[['fecha_cruce_mensual', DatasetKeys.OCUP_VT_PROV_INE, DatasetKeys.PERNOCT_VT_PROV_INE]].copy()
 
-        for col in [DatasetKeys.OCUPACIONES_VT_PROV, DatasetKeys.PERNOCTACIONES_VT_PROV]:
+        for col in [DatasetKeys.OCUP_VT_PROV_INE, DatasetKeys.PERNOCT_VT_PROV_INE]:
             if df_prov_clean[col].dtype == 'object':
                 df_prov_clean[col] = df_prov_clean[col].str.replace('.', '', regex=False).astype(float)
             elif df_prov_clean[col].dtype in ['float64', 'int64']:
