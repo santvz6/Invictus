@@ -78,9 +78,9 @@ class AEMETProcessor:
             if col in df_final.columns:
                 df_final[col] = df_final[col].fillna(df_final[col].mean())
                 
-        logger.info(f"Guardando dataset intermedio en {Paths.PROC_CSV_STEP3_AEMET}")
+        logger.info(f"Guardando dataset intermedio en {Paths.PROC_CSV_STEP_AEMET}")
         cols_to_save = [DatasetKeys.BARRIO, DatasetKeys.FECHA] + [c for c in cols_clima if c in df_final.columns]
-        df_final[cols_to_save].drop_duplicates().to_csv(Paths.PROC_CSV_STEP3_AEMET, index=False)
+        df_final[cols_to_save].drop_duplicates().to_csv(Paths.PROC_CSV_STEP_AEMET, index=False)
 
         logger.info("Enriquecimiento con AEMET completado con éxito.")
         return df_final

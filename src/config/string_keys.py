@@ -7,9 +7,9 @@ class DatasetKeys:
     USO             = "uso"
 
     # --- OneHot Encoding ---    
-    USO_COMERCIAL = USO + "_COMERCIAL"
-    USO_DOMESTICO = USO + "_DOMESTICO"
-    USO_NO_DOMESTICO = USO + "_NO DOMESTICO"
+    #USO_COMERCIAL = USO + "_COMERCIAL"
+    #USO_DOMESTICO = USO + "_DOMESTICO"
+    #USO_NO_DOMESTICO = USO + "_NO DOMESTICO"
 
     # --- Columnas calculadas (Features) ---
     CONSUMO_RATIO = "consumo_ratio"

@@ -16,7 +16,41 @@ class WaterPreprocessor:
     Módulo encargado de la limpieza, transformación y estructuración de los datos
     crudos de agua hacia un formato ingerible por las redes neuronales temporales.
     """
+    MIN_MAX = "min-max"
+    SIN_COS = "sin-cos"
 
+    # Seleccionamos las features que irán a la red neuronal
+    FEATURES = {
+        # AMAEM
+        DatasetKeys.CONSUMO_RATIO: MIN_MAX,
+        DatasetKeys.MES_SIN: SIN_COS,    
+        DatasetKeys.MES_COS: SIN_COS,
+
+        # INE - TOURISM
+        DatasetKeys.NUM_VT_BARRIO_INE: MIN_MAX,     
+        DatasetKeys.PCT_VT_BARRIO_INE: MIN_MAX,
+        DatasetKeys.OCUP_VT_PROV_INE: MIN_MAX,    
+        DatasetKeys.PERNOCT_VT_PROV_INE: MIN_MAX,   
+
+        # AEMET
+        DatasetKeys.TEMP_MEDIA: MIN_MAX, 
+        DatasetKeys.PRECIPITACION: MIN_MAX,
+        
+        # SENTINEL
+        DatasetKeys.NDVI_SATELITE: MIN_MAX,
+        
+        # GVA
+        DatasetKeys.NUM_VT_BARRIO_GVA: MIN_MAX,
+        DatasetKeys.PLAZAS_VIVIENDAS_GVA: MIN_MAX,
+        DatasetKeys.NUM_HOTELES_BARRIO_GVA: MIN_MAX,
+        DatasetKeys.PLAZAS_HOTELES_BARRIO_GVA: MIN_MAX,
+        
+        # FESTIVOS
+        
+
+        # ENGINEERED FEATURES
+        DatasetKeys.NUM_VT_ILEGALES: MIN_MAX
+    }
     @staticmethod
     def create_sequences(df: pd.DataFrame, sequence_length=12) -> tuple[np.ndarray, pd.DataFrame]:
         """
@@ -41,44 +75,11 @@ class WaterPreprocessor:
         logger.info(f"Generando secuencias temporales de tamaño {sequence_length} meses...")
         
         # Ordenamos cronológicamente
-        df = df.sort_values(by=[DatasetKeys.BARRIO, DatasetKeys.USO, DatasetKeys.FECHA])
-        
-        # Seleccionamos las features que irán a la red neuronal
-        feature_cols = [
-            # AMAEM
-            DatasetKeys.CONSUMO_RATIO,
-            DatasetKeys.MES_SIN,
-            DatasetKeys.MES_COS,
-
-            # INE - TOURISM
-            DatasetKeys.NUM_VT_BARRIO_INE,     
-            DatasetKeys.PCT_VT_BARRIO_INE,
-            DatasetKeys.OCUP_VT_PROV_INE,    
-            DatasetKeys.PERNOCT_VT_PROV_INE,  
-
-            # FÍSICOS
-            DatasetKeys.CONSUMO_FISICO_ESPERADO, 
-
-            # AEMET
-            DatasetKeys.TEMP_MEDIA, 
-            DatasetKeys.PRECIPITACION,
-            
-            # SENTINEL
-            DatasetKeys.NDVI_SATELITE,
-            
-            # GVA
-            DatasetKeys.NUM_VT_BARRIO_GVA,
-            DatasetKeys.PLAZAS_VIVIENDAS_GVA,
-            DatasetKeys.NUM_HOTELES_BARRIO_GVA,
-            DatasetKeys.PLAZAS_HOTELES_BARRIO_GVA,
-            
-            # ENGINEERED FEATURES
-            DatasetKeys.NUM_VT_ILEGALES
-        ]
+        df = df.sort_values(by=[DatasetKeys.BARRIO, DatasetKeys.USO, DatasetKeys.FECHA])        
         
         # Asegurar que solo usamos características que existan realmente en el DataFrame
         # (protege el código si algún archivo externo como Sentinel no se encontró)
-        feature_cols = [col for col in feature_cols if col in df.columns]
+        feature_cols = [col for col in WaterPreprocessor.FEATURES if col in df.columns]
 
         # Asegurar que existan las columnas OHE, si no, rellenar con 0
         #ohe_cols = [DatasetKeys.USO_DOMESTICO, DatasetKeys.USO_COMERCIAL, DatasetKeys.USO_NO_DOMESTICO]
@@ -125,35 +126,18 @@ class WaterPreprocessor:
         """
         df = df.copy()
         scaler = MinMaxScaler()
-        
-        # Aquí añadiremos en el futuro la temperatura, precipitaciones, consumo físico, etc.
-        # ? Realmente queremos MinMaxScaler para todos los features 
-        # ? o para algunos es mejor StandardScaler
-        cols_to_scale = [
-            DatasetKeys.CONSUMO_RATIO,
-            DatasetKeys.NUM_VT_BARRIO_INE,
-            DatasetKeys.PCT_VT_BARRIO_INE,
-            DatasetKeys.OCUP_VT_PROV_INE,
-            DatasetKeys.PERNOCT_VT_PROV_INE,
-            DatasetKeys.TEMP_MEDIA,
-            DatasetKeys.PRECIPITACION,
-            DatasetKeys.CONSUMO_FISICO_ESPERADO,
-            DatasetKeys.NDVI_SATELITE,
-            DatasetKeys.NUM_VT_BARRIO_GVA,
-            DatasetKeys.PLAZAS_VIVIENDAS_GVA,
-            DatasetKeys.NUM_HOTELES_BARRIO_GVA,
-            DatasetKeys.PLAZAS_HOTELES_BARRIO_GVA,
-            DatasetKeys.NUM_VT_ILEGALES
+
+        cols_to_minmax = [
+            col for col, scale_type in WaterPreprocessor.FEATURES.items() 
+            if scale_type == WaterPreprocessor.MIN_MAX and col in df.columns
         ]
-        
-        # Filtramos por seguridad
-        cols_present = [c for c in cols_to_scale if c in df.columns]
-        if cols_present:
+        if cols_to_minmax:
+            scaler = MinMaxScaler()
             # ! A pesar de que hay 'Data Leakage'
             # ! Hay que recordar que estamos entrenando un Autoencoder
-            df[cols_present] = scaler.fit_transform(df[cols_present])
+            df[cols_to_minmax] = scaler.fit_transform(df[cols_to_minmax])
         
-        # Escalado del mes
+        # Escalado del mes (SIN-COS)
         meses = df[DatasetKeys.MES]
         df[DatasetKeys.MES_SIN] = (np.sin(2 * np.pi * meses / 12) + 1) / 2
         df[DatasetKeys.MES_COS] = (np.cos(2 * np.pi * meses / 12) + 1) / 2
@@ -202,28 +186,28 @@ class WaterPreprocessor:
         return df
     
     @staticmethod
-    def _save_processed_df(df: pd.DataFrame, df_scaled: pd.DataFrame) -> pd.DataFrame:
+    def _save_processed_df(df_not_scaled: pd.DataFrame, df_scaled: pd.DataFrame) -> pd.DataFrame:
         """Persiste el DataFrame preprocesado en disco en formato CSV."""
-        df.to_csv(Paths.PROC_CSV_AMAEM_NOT_SCALED, index=False)
+        df_not_scaled.to_csv(Paths.PROC_CSV_AMAEM_NOT_SCALED, index=False)
         df_scaled.to_csv(Paths.PROC_CSV_AMAEM_SCALED, index=False)
     
     @staticmethod
     def process_raw_data(df: pd.DataFrame) -> pd.DataFrame:
         """Pipeline principal de limpieza que orquesta los pasos de preprocesamiento de un DataFrame crudo."""
-        df = df.copy()
+        df_not_scaled = df.copy()
         
-        df = AMAEMProcessor.process(df)
+        df_not_scaled = AMAEMProcessor.process(df_not_scaled)
         # Turismo
-        df = INETourismProcessor.process(df)
-        df = GVAProcessor.process(df)
+        df_not_scaled = INETourismProcessor.process(df_not_scaled)
+        df_not_scaled = GVAProcessor.process(df_not_scaled)
         # Clima
-        df = AEMETProcessor.process(df)
-        df = SentinelProcessor.process(df)
-        df = FisicosProcessor.process(df)
-
+        df_not_scaled = AEMETProcessor.process(df_not_scaled)
+        df_not_scaled = SentinelProcessor.process(df_not_scaled)
         # Viviendas Turísticas Ilegales INE - GVA
-        df = WaterPreprocessor._engineer_features(df)
+        df_not_scaled = WaterPreprocessor._engineer_features(df_not_scaled)
 
-        df_scaled = WaterPreprocessor._scale_features(df)
-        WaterPreprocessor._save_processed_df(df, df_scaled)
+        # Escalado
+        df_scaled = WaterPreprocessor._scale_features(df_not_scaled)
+        WaterPreprocessor._save_processed_df(df_not_scaled, df_scaled)
+
         return df_scaled

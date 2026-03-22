@@ -50,13 +50,14 @@ class Paths:
     RAW_JSON_ZONAS_VERDES            = AMAEM_JSON_DIR / "zonas-verdes.json"
 
     ## --- PROCESSED --- ##
-    PROC_CSV_STEP1_AMAEM = PROC_DIR / "step1_amaem.csv"
-    PROC_CSV_STEP2_INE = PROC_DIR / "step2_ine.csv"
-    PROC_CSV_STEP3_AEMET = PROC_DIR / "step3_aemet.csv"
-    PROC_CSV_STEP4_FISICOS = PROC_DIR / "step4_fisicos.csv"
-    PROC_CSV_STEP5_SENTINEL = PROC_DIR / "step5_sentinel.csv"
-    PROC_CSV_STEP6_GVA = PROC_DIR / "step6_gva.csv"
-    PROC_CSV_AMAEM_SCALED = PROC_DIR / "AMAEM-2022-2024_scaled.csv"
+    PROC_CSV_STEP_AMAEM     = PROC_DIR / "step_amaem.csv"
+    PROC_CSV_STEP_INE       = PROC_DIR / "step_ine.csv"
+    PROC_CSV_STEP_GVA       = PROC_DIR / "step_gva.csv"
+    PROC_CSV_STEP_AEMET     = PROC_DIR / "step_aemet.csv"
+    PROC_CSV_STEP_SENTINEL  = PROC_DIR / "step_sentinel.csv"
+
+    PROC_CSV_AMAEM_FISICOS    = PROC_DIR / "AMAEM-2022-2024_fisicos.csv"
+    PROC_CSV_AMAEM_SCALED     = PROC_DIR / "AMAEM-2022-2024_scaled.csv"
     PROC_CSV_AMAEM_NOT_SCALED = PROC_DIR / "AMAEM-2022-2024_not_scaled.csv"
     
     ## --- EXTERNAL --- ##

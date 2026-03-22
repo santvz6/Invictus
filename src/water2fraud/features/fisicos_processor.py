@@ -22,7 +22,7 @@ class FisicosProcessor:
         return (m * t + c) + (a1 * np.cos(w * t) + b1 * np.sin(w * t)) + (a2 * np.cos(2 * w * t) + b2 * np.sin(2 * w * t))
 
     @staticmethod
-    def process(df: pd.DataFrame) -> pd.DataFrame:
+    def process(df: pd.DataFrame, feature_names: list[str]) -> pd.DataFrame:
         logger.info("Iniciando cálculo de consumo físico esperado (Fourier + ML)...")
         df = df.copy()
 
@@ -51,12 +51,7 @@ class FisicosProcessor:
         # 3. MACHINE LEARNING (PREDICCIÓN DE COMPORTAMIENTO)
         df[DatasetKeys.RESIDUO] = df[DatasetKeys.CONSUMO_RATIO] - df[DatasetKeys.PREDICCION_FOURIER]
 
-        exogenas_potenciales = [
-            DatasetKeys.TEMP_MEDIA, DatasetKeys.PRECIPITACION,
-            DatasetKeys.NUM_VT_BARRIO_INE, DatasetKeys.PCT_VT_BARRIO_INE,
-            DatasetKeys.OCUP_VT_PROV_INE, DatasetKeys.PERNOCT_VT_PROV_INE
-        ]
-        exogenas = [col for col in exogenas_potenciales if col in df.columns]
+        exogenas = [col for col in feature_names if col in df.columns]
         for col in exogenas:
             df[col] = df[col].fillna(df[col].mean())
 
@@ -70,12 +65,12 @@ class FisicosProcessor:
         # 4. HÍBRIDO FINAL
         df[DatasetKeys.CONSUMO_FISICO_ESPERADO] = df[DatasetKeys.PREDICCION_FOURIER] + df[DatasetKeys.IMPACTO_EXOGENO]
         
-        logger.info(f"Guardando dataset intermedio en {Paths.PROC_CSV_STEP4_FISICOS}")
+        logger.info(f"Guardando dataset intermedio en {Paths.PROC_CSV_AMAEM_FISICOS}")
         cols_to_save = [DatasetKeys.BARRIO, DatasetKeys.USO, DatasetKeys.FECHA, 
                         DatasetKeys.PREDICCION_FOURIER, DatasetKeys.IMPACTO_EXOGENO, 
                         DatasetKeys.RESIDUO, DatasetKeys.CONSUMO_FISICO_ESPERADO]
             
-        df[cols_to_save].drop_duplicates(subset=[DatasetKeys.BARRIO, DatasetKeys.USO, DatasetKeys.FECHA]).to_csv(Paths.PROC_CSV_STEP4_FISICOS, index=False)
+        df[cols_to_save].drop_duplicates(subset=[DatasetKeys.BARRIO, DatasetKeys.USO, DatasetKeys.FECHA]).to_csv(Paths.PROC_CSV_AMAEM_FISICOS, index=False)
         
         logger.info("Enriquecimiento con variables Físicas completado con éxito.")
         return df

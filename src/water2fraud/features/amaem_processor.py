@@ -39,14 +39,6 @@ class AMAEMProcessor:
         df[DatasetKeys.FECHA] = pd.to_datetime(df[DatasetKeys.FECHA], format="%Y/%m/%d")
         df[DatasetKeys.MES] = df[DatasetKeys.FECHA].dt.month
         return df
-    
-    @staticmethod
-    def _one_hot_encoding(df: pd.DataFrame) -> pd.DataFrame:
-        """Aplica One-Hot Encoding a la variable categórica de Uso del agua."""
-        df = df.copy()
-        dummies = pd.get_dummies(df[DatasetKeys.USO], prefix=DatasetKeys.USO, dtype=int)
-        return  pd.concat([df, dummies], axis=1)
-
 
     @staticmethod
     def process(df: pd.DataFrame) -> pd.DataFrame:
@@ -54,9 +46,8 @@ class AMAEMProcessor:
         df = AMAEMProcessor._rename_df(df)
         df = AMAEMProcessor._process_NaN(df)
         df = AMAEMProcessor._convert_dtype(df)
-        df = AMAEMProcessor._one_hot_encoding(df)
         
-        logger.info(f"Guardando dataset intermedio en {Paths.PROC_CSV_STEP1_AMAEM}")
-        df.to_csv(Paths.PROC_CSV_STEP1_AMAEM, index=False)
+        logger.info(f"Guardando dataset intermedio en {Paths.PROC_CSV_STEP_AMAEM}")
+        df.to_csv(Paths.PROC_CSV_STEP_AMAEM, index=False)
         
         return df

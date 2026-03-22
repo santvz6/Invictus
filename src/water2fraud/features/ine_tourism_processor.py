@@ -60,9 +60,9 @@ class INETourismProcessor:
         # ¡La columna original DatasetKeys.FECHA ha permanecido intacta todo el tiempo!
         df_final = df_final.drop(columns=['fecha_cruce_mensual'])
         
-        logger.info(f"Guardando dataset intermedio en {Paths.PROC_CSV_STEP2_INE}")
+        logger.info(f"Guardando dataset intermedio en {Paths.PROC_CSV_STEP_INE}")
         cols_to_save = [DatasetKeys.BARRIO, DatasetKeys.FECHA] + [c for c in cols_ine if c in df_final.columns]
-        df_final[cols_to_save].drop_duplicates().to_csv(Paths.PROC_CSV_STEP2_INE, index=False)
+        df_final[cols_to_save].drop_duplicates().to_csv(Paths.PROC_CSV_STEP_INE, index=False)
         
         logger.info("Enriquecimiento con INE completado con éxito.")
         return df_final

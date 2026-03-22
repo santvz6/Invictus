@@ -46,7 +46,7 @@ class SentinelProcessor:
             df = df.drop(columns=['fecha_cruce_mensual'])
             
             # Guardar el CSV del paso extrayendo solo 1 fila por combinación Barrio-Fecha
-            ruta_csv = Paths.PROC_CSV_STEP5_SENTINEL
+            ruta_csv = Paths.PROC_CSV_STEP_SENTINEL
             logger.info(f"Guardando dataset intermedio en {ruta_csv}")
             
             cols_to_save = [DatasetKeys.BARRIO, DatasetKeys.FECHA, DatasetKeys.NDVI_SATELITE]

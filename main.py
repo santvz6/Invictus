@@ -64,12 +64,14 @@ class WaterApp:
         metadata_df['cluster'] = labels
         # FASE 3: Entrenamiento de Autoencoders por Clúster
         modelos_entrenados = WaterApp._phase_3_training(X_sequences, metadata_df, device)
-        # FASE 4: Detección de Anomalías e Inyección de Reglas Físicas
-        df_resultados = WaterApp._phase_4_detection(X_sequences, metadata_df, modelos_entrenados, feature_names, device)
-        # FASE 5: Guardado de resultados y modelos
-        WaterApp._save_results(df_resultados, cluster_manager, modelos_entrenados)
+        # FASE 4: Inferencia y Detección de Anomalías (Autoencoder)
+        df_ae_resultados = WaterApp._phase_4_detection(X_sequences, metadata_df, modelos_entrenados, feature_names, device)
+        # FASE 5: Ponderación Física y Cálculo de Riesgo de Fraude (Risk Score)
+        df_final = WaterApp._phase_5_risk_scoring(df_ae_resultados)
+        # FASE 6: Guardado de resultados y modelos
+        WaterApp._save_results(df_final, cluster_manager, modelos_entrenados)
         
-        return df_resultados
+        return df_final
 
     @staticmethod
     def _phase_1_preprocessing(df_raw: pd.DataFrame) -> tuple[np.ndarray, pd.DataFrame, list[str]]:
@@ -86,12 +88,12 @@ class WaterApp:
                 - feature_names (list[str]): Nombres de las variables en el orden de X_sequences
         """
         logger.info("--- FASE 1: Preprocesamiento y Secuencias Temporales ---")
-        df_clean = WaterPreprocessor.process_raw_data(df_raw)
+        df_scaled = WaterPreprocessor.process_raw_data(df_raw)
 
-        # ! Aquí ya hemos cruzado df_clean con las fórmulas físicas y AEMET 
-        # ! antes de crear las secuencias. WaterPreprocessor lo maneja.
+        # ! Aquí ya hemos cruzado df_scaled con los features.
+        # ! Antes de crear las secuencias, WaterPreprocessor lo maneja.
         
-        X_sequences, metadata_df, feature_names = WaterPreprocessor.create_sequences(df_clean, sequence_length=12)
+        X_sequences, metadata_df, feature_names = WaterPreprocessor.create_sequences(df_scaled, sequence_length=12)
         return X_sequences, metadata_df, feature_names
 
     @staticmethod
@@ -214,6 +216,49 @@ class WaterApp:
         # Unificar todos los resultados
         df_resultados = pd.concat(resultados_finales, ignore_index=True)
         return df_resultados
+
+    @staticmethod
+    def _phase_5_risk_scoring(df_ae: pd.DataFrame) -> pd.DataFrame:
+        """
+        Cruza los errores de reconstrucción del Autoencoder (AE) con las predicciones
+        físicas sobre los datos reales (no escalados) para generar una puntuación
+        de riesgo de fraude combinada (Ensamble manual).
+        """
+        logger.info("--- FASE 5: Ponderación Híbrida (AE + Física) y Puntuación de Riesgo ---")
+        from src.water2fraud.features.fisicos_processor import FisicosProcessor
+        from sklearn.preprocessing import MinMaxScaler
+        
+        # 1. Procesar la lógica física sobre los datos NO ESCALADOS (para ver litros reales)
+        df_not_scaled = pd.read_csv(Paths.PROC_CSV_AMAEM_NOT_SCALED)
+        df_fisicos    = FisicosProcessor.process(df_not_scaled, list(WaterPreprocessor.FEATURES.keys()))
+
+        # 2. Cruzar AE con Física
+        df_final = pd.merge(
+            df_fisicos, 
+            df_ae[[DatasetKeys.BARRIO, DatasetKeys.USO, DatasetKeys.FECHA, 'reconstruction_error', 'cluster']], 
+            on=[DatasetKeys.BARRIO, DatasetKeys.USO, DatasetKeys.FECHA], 
+            how='inner'
+        )
+
+        # 3. Normalizar Errores (0 a 100) para que sean comparables
+        scaler = MinMaxScaler(feature_range=(0, 100))
+        df_final['ae_score'] = scaler.fit_transform(df_final[['reconstruction_error']])
+        
+        # Para la física, solo nos importa el "exceso" de consumo, no si gastan menos de lo esperado
+        df_final['residuo_positivo'] = df_final[DatasetKeys.RESIDUO].clip(lower=0)
+        df_final['physics_score'] = scaler.fit_transform(df_final[['residuo_positivo']])
+
+        # 4. Calcular el FRAUD RISK SCORE (60% Peso a la Forma AE, 40% a la Magnitud Física)
+        df_final['FRAUD_RISK_SCORE'] = (df_final['ae_score'] * 0.8) + (df_final['physics_score'] * 0.2)
+
+        # 5. Definir la Alerta (Percentil 95 global del Risk Score)
+        umbral_rojo = np.percentile(df_final['FRAUD_RISK_SCORE'], 95)
+        df_final['ALERTA_TURISTICA_ILEGAL'] = df_final['FRAUD_RISK_SCORE'] > umbral_rojo
+
+        # Limpiamos columnas auxiliares
+        df_final = df_final.drop(columns=['residuo_positivo'])
+        
+        return df_final
 
     @staticmethod
     def _load_data() -> pd.DataFrame:
