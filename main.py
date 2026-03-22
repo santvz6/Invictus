@@ -208,7 +208,7 @@ class WaterApp:
             model = modelos[model_key]
             
             # Detección Autoencoder
-            df_anomalias = detect_ae_anomalies(model, X_cluster, meta_cluster, AIConstants.ANOMALIES_PERCENTILE, 
+            df_anomalias = detect_ae_anomalies(model, X_cluster, meta_cluster, AIConstants.AE_ANOMALIES_PERCENTILE, 
                                                feature_names=feature_names, device=device)
             resultados_finales.append(df_anomalias) 
             
@@ -232,7 +232,8 @@ class WaterApp:
         df_fisicos    = FisicosProcessor.process(df_not_scaled, list(WaterPreprocessor.FEATURES.keys()))
 
         # 2. Cruzamos AE con Física
-        cols_ae = [DatasetKeys.BARRIO, DatasetKeys.USO, DatasetKeys.FECHA, DatasetKeys.RECONSTRUCTION_ERROR, DatasetKeys.CLUSTER]
+        cols_ae = [DatasetKeys.BARRIO, DatasetKeys.USO, DatasetKeys.FECHA, 
+                    DatasetKeys.RECONSTRUCTION_ERROR, DatasetKeys.CLUSTER, DatasetKeys.IS_AE_ANOMALY]
         ae_consumo_col = f'signed_error__{DatasetKeys.CONSUMO_RATIO}'
         cols_ae.append(ae_consumo_col)
 
@@ -258,7 +259,7 @@ class WaterApp:
         )
 
         # 5. Definimos la Alerta
-        umbral_rojo = np.percentile(df_final[DatasetKeys.FRAUD_RISK_SCORE], AIConstants.ANOMALIES_PERCENTILE)
+        umbral_rojo = np.percentile(df_final[DatasetKeys.FRAUD_RISK_SCORE], AIConstants.PHYSICS_ANOMALIES_PERCENTILE)
         df_final[DatasetKeys.ALERTA_TURISTICA_ILEGAL] = df_final[DatasetKeys.FRAUD_RISK_SCORE] > umbral_rojo
 
         # 6. Clasificamos Nivel de Riesgo
@@ -321,19 +322,28 @@ class WaterApp:
         folder_path = Paths.EXPERIMENTS_DIR / timestamp
         folder_path.mkdir(parents=True, exist_ok=True)
         
-        # 1. Alertas Priorizadas (Solo columnas relevantes para el usuario)
-        cols_priorizadas = [
-            DatasetKeys.BARRIO, DatasetKeys.USO, DatasetKeys.FECHA,
-            DatasetKeys.CONSUMO_RATIO, DatasetKeys.RESIDUO,
-            DatasetKeys.AE_SCORE, DatasetKeys.PHYSICS_SCORE,
-            DatasetKeys.FRAUD_RISK_SCORE, DatasetKeys.NIVEL_RIESGO, DatasetKeys.MOTIVO
-        ]
-        cols_priorizadas = [c for c in cols_priorizadas if c in df_resultados.columns]
+        # 1. Alertas Priorizadas (Con nombres legibles y diferenciados)
+        cols_final_renamed = {
+            DatasetKeys.BARRIO: "Barrio",
+            DatasetKeys.USO: "Uso",
+            DatasetKeys.FECHA: "Fecha",
+            DatasetKeys.CONSUMO_RATIO: "Consumo_Real_L_dia",
+            DatasetKeys.RESIDUO: "Diferencia_Fisica_L",
+            DatasetKeys.IS_AE_ANOMALY: "Alerta_Solo_Autoencoder",
+            DatasetKeys.AE_SCORE: "Riesgo_Autoencoder_%",
+            DatasetKeys.PHYSICS_SCORE: "Riesgo_Fisico_%",
+            DatasetKeys.FRAUD_RISK_SCORE: "Puntaje_Hibrido_Final",
+            DatasetKeys.NIVEL_RIESGO: "Nivel_Riesgo",
+            DatasetKeys.MOTIVO: "Motivo_Explicacion"
+        }
         
+        cols_presentes = [c for c in cols_final_renamed.keys() if c in df_resultados.columns]
         df_alertas = df_resultados[df_resultados[DatasetKeys.ALERTA_TURISTICA_ILEGAL] == True].copy()
         df_alertas = df_alertas.sort_values(by=DatasetKeys.FRAUD_RISK_SCORE, ascending=False)
         
-        df_alertas[cols_priorizadas].to_csv(folder_path / "alertas_priorizadas.csv", index=False)
+        # Guardar CSV Priorizado con nombres claros
+        df_priorizadas = df_alertas[cols_presentes].rename(columns=cols_final_renamed)
+        df_priorizadas.to_csv(folder_path / "alertas_priorizadas.csv", index=False)
         
         # 2. Guardar dataset completo (para científicos de datos)
         df_resultados.to_csv(folder_path / "resultados_completos_tecnicos.csv", index=False)
@@ -349,12 +359,12 @@ class WaterApp:
         print(f"\n{'='*60}")
         print(f"PIPELINE WATER2FRAUD FINALIZADO")
         print(f"Reporte de Análisis: {folder_path / 'REPORTE_ANALISIS.md'}")
-        print(f"Casos crícticos detectados: {len(df_alertas)}")
+        print(f"Casos críticos detectados: {len(df_alertas)}")
         print(f"{'='*60}")
         
         if not df_alertas.empty:
             print("\n🚨 TOP 5 CASOS DE ALTO RIESGO:")
-            print(df_alertas[cols_priorizadas].head(5).to_string(index=False))
+            print(df_priorizadas.head(5).to_string(index=False))
 
     @staticmethod
     def _generate_markdown_report(df_alertas: pd.DataFrame, folder_path: Path) -> None:

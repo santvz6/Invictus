@@ -186,7 +186,7 @@ class WaterPreprocessor:
         # 7. Porcentaje de Viviendas Ilegales sobre el total de contratos
         df[DatasetKeys.PCT_VT_ILEGALES] = ((df[DatasetKeys.NUM_VT_ILEGALES] / df[DatasetKeys.NUM_CONTRATOS].replace(0, np.nan)) * 100).fillna(0).round(2)
 
-        df = df.drop(columns=['pct_barrio'])
+        df = df.drop(columns=['pct_barrio']) # ,DatasetKeys.NUM_VT_BARRIO_INE, DatasetKeys.NUM_VT_BARRIO_GVA])
         return df
     
     @staticmethod
