@@ -51,7 +51,7 @@ class FisicosProcessor:
         # 3. MACHINE LEARNING (PREDICCIÓN DE COMPORTAMIENTO)
         df[DatasetKeys.RESIDUO] = df[DatasetKeys.CONSUMO_RATIO] - df[DatasetKeys.PREDICCION_FOURIER]
 
-        exogenas = [col for col in feature_names if col in df.columns]
+        exogenas = [col for col in feature_names if col in df.columns and col != DatasetKeys.CONSUMO_RATIO]
         for col in exogenas:
             df[col] = df[col].fillna(df[col].mean())
 
@@ -64,6 +64,9 @@ class FisicosProcessor:
 
         # 4. HÍBRIDO FINAL
         df[DatasetKeys.CONSUMO_FISICO_ESPERADO] = df[DatasetKeys.PREDICCION_FOURIER] + df[DatasetKeys.IMPACTO_EXOGENO]
+        
+        # NUEVO RESIDUO PARA DETECTAR ANOMALÍAS
+        df[DatasetKeys.RESIDUO] = df[DatasetKeys.CONSUMO_RATIO] - df[DatasetKeys.CONSUMO_FISICO_ESPERADO]
         
         logger.info(f"Guardando dataset intermedio en {Paths.PROC_CSV_AMAEM_FISICOS}")
         cols_to_save = [DatasetKeys.BARRIO, DatasetKeys.USO, DatasetKeys.FECHA, 

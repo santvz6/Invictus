@@ -146,10 +146,11 @@ def detect_ae_anomalies(model: nn.Module, X_sequences: np.ndarray, metadata_df: 
         metadata_df[f'error__{name}'] = feature_errors[:, i]
         metadata_df[f'signed_error__{name}'] = signed_feature_errors[:, i]
     
-    # LÓGICA DE FLAGS
-    # Ejemplo: Si el error global supera el percentil 95, es anomalía
+    # LÓGICA DE FLAGS Y SCORES LOCALES (POR CLÚSTER)
+    # 100 significa que el error está exactamente en el umbral del percentil X
     umbral = np.percentile(global_errors, anomalies_percentile)
     metadata_df[DatasetKeys.IS_AE_ANOMALY] = global_errors > umbral
+    metadata_df[DatasetKeys.AE_SCORE] = (global_errors / (umbral if umbral > 0 else 1e-9)) * 100
     
     return metadata_df
 

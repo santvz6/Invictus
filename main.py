@@ -227,13 +227,19 @@ class WaterApp:
         from src.water2fraud.features.fisicos_processor import FisicosProcessor
         from sklearn.preprocessing import MinMaxScaler
         
+        # === FILTRO ESTRATÉGICO ===
+        logger.info("Filtrando análisis de fraude unicamente a contratos de uso DOMÉSTICO...")
+        df_ae = df_ae[df_ae[DatasetKeys.USO] == "DOMESTICO"].copy()
+
         # 1. Procesamos la lógica física sobre los datos NO ESCALADOS
         df_not_scaled = pd.read_csv(Paths.PROC_CSV_AMAEM_NOT_SCALED)
+        df_not_scaled = df_not_scaled[df_not_scaled[DatasetKeys.USO] == "DOMESTICO"].copy()
+        
         df_fisicos    = FisicosProcessor.process(df_not_scaled, list(WaterPreprocessor.FEATURES.keys()))
 
         # 2. Cruzamos AE con Física
         cols_ae = [DatasetKeys.BARRIO, DatasetKeys.USO, DatasetKeys.FECHA, 
-                    DatasetKeys.RECONSTRUCTION_ERROR, DatasetKeys.CLUSTER, DatasetKeys.IS_AE_ANOMALY]
+                    DatasetKeys.AE_SCORE, DatasetKeys.CLUSTER, DatasetKeys.IS_AE_ANOMALY]
         ae_consumo_col = f'signed_error__{DatasetKeys.CONSUMO_RATIO}'
         cols_ae.append(ae_consumo_col)
 
@@ -244,11 +250,16 @@ class WaterApp:
             how='inner'
         )
 
-        # 3. Normalizamos Errores (0 a 100)
+        # 3. Normalizamos Errores Físicos (0 a 100)
         scaler = MinMaxScaler(feature_range=(0, 100))
-        df_final[DatasetKeys.AE_SCORE] = scaler.fit_transform(df_final[[DatasetKeys.RECONSTRUCTION_ERROR]])
+        
+        # El AE_SCORE ya viene normalizado localmente (100 = umbral) desde Phase 4
+        # Aplicamos la restricción física de "Direccionalidad"
         df_final.loc[df_final[ae_consumo_col] <= 0, DatasetKeys.AE_SCORE] = 0
         
+        # Penalizamos directamente si NO es anomalía del AE (Puerta lógica sugerida por usuario)
+        df_final.loc[df_final[DatasetKeys.IS_AE_ANOMALY] == False, DatasetKeys.AE_SCORE] *= 0.5
+
         df_final[DatasetKeys.RESIDUO_POSITIVO] = df_final[DatasetKeys.RESIDUO].clip(lower=0)
         df_final[DatasetKeys.PHYSICS_SCORE] = scaler.fit_transform(df_final[[DatasetKeys.RESIDUO_POSITIVO]])
 
