@@ -5,6 +5,7 @@ import argparse
 import torch
 import torch.nn as nn
 
+from pathlib import Path
 from datetime import datetime
 
 from src.water2fraud.features.preprocessor import WaterPreprocessor
@@ -13,9 +14,8 @@ from src.water2fraud.models.autoencoder import LSTMAutoencoder
 from src.water2fraud.models.dataset import get_dataloader
 from src.water2fraud.models.trainer import (
     train_autoencoder, 
-    detect_anomalies, 
+    detect_ae_anomalies, 
     plot_training_history, 
-    plot_reconstruction
 )
 
 from src.config import get_logger, Paths, DatasetKeys, AIConstants
@@ -61,11 +61,11 @@ class WaterApp:
         X_sequences, metadata_df, feature_names = WaterApp._phase_1_preprocessing(df_raw)
         # FASE 2: Clustering Temporal de Series
         labels, cluster_manager = WaterApp._phase_2_clustering(X_sequences)
-        metadata_df['cluster'] = labels
+        metadata_df[DatasetKeys.CLUSTER] = labels
         # FASE 3: Entrenamiento de Autoencoders por Clúster
         modelos_entrenados = WaterApp._phase_3_training(X_sequences, metadata_df, device)
         # FASE 4: Inferencia y Detección de Anomalías (Autoencoder)
-        df_ae_resultados = WaterApp._phase_4_detection(X_sequences, metadata_df, modelos_entrenados, feature_names, device)
+        df_ae_resultados = WaterApp._phase_4_ae_detection(X_sequences, metadata_df, modelos_entrenados, feature_names, device)
         # FASE 5: Ponderación Física y Cálculo de Riesgo de Fraude (Risk Score)
         df_final = WaterApp._phase_5_risk_scoring(df_ae_resultados)
         # FASE 6: Guardado de resultados y modelos
@@ -144,7 +144,7 @@ class WaterApp:
           
 
         modelos = {}
-        clusters_unicos = metadata_df['cluster'].unique()
+        clusters_unicos = metadata_df[DatasetKeys.CLUSTER].unique()
         num_features = X_sequences.shape[2]
         seq_len      = X_sequences.shape[1]
 
@@ -152,7 +152,7 @@ class WaterApp:
             logger.info(f"> Entrenando Autoencoder para Clúster {cluster_id}...")
             
             # Filtrar datos de entrenamiento para este clúster
-            idx_cluster = metadata_df['cluster'] == cluster_id
+            idx_cluster = metadata_df[DatasetKeys.CLUSTER] == cluster_id
             X_cluster = X_sequences[idx_cluster]
             
             # Preparar DataLoader y Modelo
@@ -170,7 +170,7 @@ class WaterApp:
         return modelos
     
     @staticmethod
-    def _phase_4_detection(X_sequences: np.ndarray, metadata_df: pd.DataFrame, 
+    def _phase_4_ae_detection(X_sequences: np.ndarray, metadata_df: pd.DataFrame, 
                            modelos: dict, feature_names: list[str], device: str) -> pd.DataFrame:
         """
         Fase de Inferencia y Detección: Evalúa los datos a través de los modelos entrenados
@@ -190,13 +190,13 @@ class WaterApp:
         logger.info("--- FASE 4: Inferencia y Detección de Anomalías Turísticas ---")
         
         resultados_finales = []
-        clusters_unicos = metadata_df['cluster'].unique()
+        clusters_unicos = metadata_df[DatasetKeys.CLUSTER].unique()
 
         for cluster_id in sorted(clusters_unicos):
             logger.info(f"> Evaluando viviendas del Clúster {cluster_id}...")
             
             # Recuperar datos y modelo correspondiente
-            idx_cluster = metadata_df['cluster'] == cluster_id
+            idx_cluster = metadata_df[DatasetKeys.CLUSTER] == cluster_id
             X_cluster = X_sequences[idx_cluster]
             meta_cluster = metadata_df[idx_cluster].copy()
             
@@ -207,18 +207,17 @@ class WaterApp:
                 
             model = modelos[model_key]
             
-            # Detección (Error de reconstrucción + Leyes Físicas)
-            # Umbral físico: Si el consumo real supera 1.5x el teórico, es sospechoso
-            df_anomalias = detect_anomalies(model, X_cluster, meta_cluster, 
-                                            feature_names=feature_names, physics_threshold=1.5, device=device)
-            resultados_finales.append(df_anomalias)
+            # Detección Autoencoder
+            df_anomalias = detect_ae_anomalies(model, X_cluster, meta_cluster, AIConstants.ANOMALIES_PERCENTILE, 
+                                               feature_names=feature_names, device=device)
+            resultados_finales.append(df_anomalias) 
             
         # Unificar todos los resultados
-        df_resultados = pd.concat(resultados_finales, ignore_index=True)
-        return df_resultados
+        df_ae_resultados = pd.concat(resultados_finales, ignore_index=True)
+        return df_ae_resultados
 
     @staticmethod
-    def _phase_5_risk_scoring(df_ae: pd.DataFrame) -> pd.DataFrame:
+    def _phase_5_risk_scoring(df_ae: pd.DataFrame, risk_score={"ae_weight": 0.8, "physics_weight": 0.2}) -> pd.DataFrame:
         """
         Cruza los errores de reconstrucción del Autoencoder (AE) con las predicciones
         físicas sobre los datos reales (no escalados) para generar una puntuación
@@ -228,37 +227,68 @@ class WaterApp:
         from src.water2fraud.features.fisicos_processor import FisicosProcessor
         from sklearn.preprocessing import MinMaxScaler
         
-        # 1. Procesar la lógica física sobre los datos NO ESCALADOS (para ver litros reales)
+        # 1. Procesamos la lógica física sobre los datos NO ESCALADOS
         df_not_scaled = pd.read_csv(Paths.PROC_CSV_AMAEM_NOT_SCALED)
         df_fisicos    = FisicosProcessor.process(df_not_scaled, list(WaterPreprocessor.FEATURES.keys()))
 
-        # 2. Cruzar AE con Física
+        # 2. Cruzamos AE con Física
+        cols_ae = [DatasetKeys.BARRIO, DatasetKeys.USO, DatasetKeys.FECHA, DatasetKeys.RECONSTRUCTION_ERROR, DatasetKeys.CLUSTER]
+        ae_consumo_col = f'signed_error__{DatasetKeys.CONSUMO_RATIO}'
+        cols_ae.append(ae_consumo_col)
+
         df_final = pd.merge(
             df_fisicos, 
-            df_ae[[DatasetKeys.BARRIO, DatasetKeys.USO, DatasetKeys.FECHA, 'reconstruction_error', 'cluster']], 
+            df_ae[cols_ae], 
             on=[DatasetKeys.BARRIO, DatasetKeys.USO, DatasetKeys.FECHA], 
             how='inner'
         )
 
-        # 3. Normalizar Errores (0 a 100) para que sean comparables
+        # 3. Normalizamos Errores (0 a 100)
         scaler = MinMaxScaler(feature_range=(0, 100))
-        df_final['ae_score'] = scaler.fit_transform(df_final[['reconstruction_error']])
+        df_final[DatasetKeys.AE_SCORE] = scaler.fit_transform(df_final[[DatasetKeys.RECONSTRUCTION_ERROR]])
+        df_final.loc[df_final[ae_consumo_col] <= 0, DatasetKeys.AE_SCORE] = 0
         
-        # Para la física, solo nos importa el "exceso" de consumo, no si gastan menos de lo esperado
-        df_final['residuo_positivo'] = df_final[DatasetKeys.RESIDUO].clip(lower=0)
-        df_final['physics_score'] = scaler.fit_transform(df_final[['residuo_positivo']])
+        df_final[DatasetKeys.RESIDUO_POSITIVO] = df_final[DatasetKeys.RESIDUO].clip(lower=0)
+        df_final[DatasetKeys.PHYSICS_SCORE] = scaler.fit_transform(df_final[[DatasetKeys.RESIDUO_POSITIVO]])
 
-        # 4. Calcular el FRAUD RISK SCORE (60% Peso a la Forma AE, 40% a la Magnitud Física)
-        df_final['FRAUD_RISK_SCORE'] = (df_final['ae_score'] * 0.8) + (df_final['physics_score'] * 0.2)
+        # 4. Calculamos el FRAUD RISK SCORE
+        df_final[DatasetKeys.FRAUD_RISK_SCORE] = (
+             (df_final[DatasetKeys.AE_SCORE] * risk_score["ae_weight"]) + 
+             (df_final[DatasetKeys.PHYSICS_SCORE] * risk_score["physics_weight"])
+        )
 
-        # 5. Definir la Alerta (Percentil 95 global del Risk Score)
-        umbral_rojo = np.percentile(df_final['FRAUD_RISK_SCORE'], 95)
-        df_final['ALERTA_TURISTICA_ILEGAL'] = df_final['FRAUD_RISK_SCORE'] > umbral_rojo
+        # 5. Definimos la Alerta
+        umbral_rojo = np.percentile(df_final[DatasetKeys.FRAUD_RISK_SCORE], AIConstants.ANOMALIES_PERCENTILE)
+        df_final[DatasetKeys.ALERTA_TURISTICA_ILEGAL] = df_final[DatasetKeys.FRAUD_RISK_SCORE] > umbral_rojo
+
+        # 6. Clasificamos Nivel de Riesgo
+        df_final[DatasetKeys.NIVEL_RIESGO] = "Bajo"
+        df_final.loc[df_final[DatasetKeys.FRAUD_RISK_SCORE] > 30, DatasetKeys.NIVEL_RIESGO] = "Medio"
+        df_final.loc[df_final[DatasetKeys.FRAUD_RISK_SCORE] > 70, DatasetKeys.NIVEL_RIESGO] = "Alto"
+
+        # 7. Generamos motivos explicativos
+        df_final[DatasetKeys.MOTIVO] = WaterApp._generate_alert_reasons(df_final)
 
         # Limpiamos columnas auxiliares
-        df_final = df_final.drop(columns=['residuo_positivo'])
+        df_final = df_final.drop(columns=[DatasetKeys.RESIDUO_POSITIVO])
         
         return df_final
+
+    @staticmethod
+    def _generate_alert_reasons(df: pd.DataFrame) -> pd.Series:
+        def format_reason(row):
+            reasons = []
+            ae_score = row.get(DatasetKeys.AE_SCORE, 0)
+            phys_score = row.get(DatasetKeys.PHYSICS_SCORE, 0)
+            
+            if ae_score > 60: reasons.append(f"Pattern IA ({ae_score:.0f}%)")
+            if phys_score > 30: reasons.append(f"Exceso Físico ({phys_score:.0f}%)")
+            
+            if not reasons and row[DatasetKeys.FRAUD_RISK_SCORE] > 0:
+                return "Riesgo moderado acumulado."
+            return " + ".join(reasons) if reasons else "Sin anomalías notables."
+            
+        return df.apply(format_reason, axis=1)
 
     @staticmethod
     def _load_data() -> pd.DataFrame:
@@ -284,54 +314,63 @@ class WaterApp:
     def _save_results(df_resultados: pd.DataFrame, cluster_manager: ClusterManager, modelos: dict) -> None:
         """
         Persiste los resultados de la detección y los modelos entrenados.
-        
-        Crea una carpeta con un sello temporal (timestamp) donde guarda:
-        - CSV con alertas confirmadas.
-        - CSV con los resultados completos.
-        - Archivo .joblib del modelo de clustering.
-        - Archivos .pth con los pesos de los Autoencoders.
-
-        Args:
-            df_resultados (pd.DataFrame): DataFrame con la salida del pipeline de detección.
-            cluster_manager (ClusterManager): Modelo K-Means entrenado.
-            modelos (dict): Diccionario de modelos LSTMAutoencoder entrenados.
         """
-        logger.info("--- FASE 5: Guardando Resultados ---")
+        logger.info("--- FASE 5: Guardando Resultados y Generando Reportes ---")
         
         timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
         folder_path = Paths.EXPERIMENTS_DIR / timestamp
         folder_path.mkdir(parents=True, exist_ok=True)
         
-        # 1. Filtrar y guardar solo las anomalías confirmadas
-        if 'ALERTA_TURISTICA_ILEGAL' in df_resultados.columns:
-            df_fraudes = df_resultados[df_resultados['ALERTA_TURISTICA_ILEGAL'] == True]
-        else:
-            df_fraudes = df_resultados[df_resultados['is_ae_anomaly'] == True] # Fallback si no hay física
-            
-        csv_name = "alertas_fraude_turistico.csv"
-        df_fraudes.to_csv(folder_path / csv_name, index=False)
+        # 1. Alertas Priorizadas (Solo columnas relevantes para el usuario)
+        cols_priorizadas = [
+            DatasetKeys.BARRIO, DatasetKeys.USO, DatasetKeys.FECHA,
+            DatasetKeys.CONSUMO_RATIO, DatasetKeys.RESIDUO,
+            DatasetKeys.AE_SCORE, DatasetKeys.PHYSICS_SCORE,
+            DatasetKeys.FRAUD_RISK_SCORE, DatasetKeys.NIVEL_RIESGO, DatasetKeys.MOTIVO
+        ]
+        cols_priorizadas = [c for c in cols_priorizadas if c in df_resultados.columns]
         
-        # 2. Guardar dataset completo con scores para análisis
-        df_resultados.to_csv(folder_path / "resultados_completos.csv", index=False)
+        df_alertas = df_resultados[df_resultados[DatasetKeys.ALERTA_TURISTICA_ILEGAL] == True].copy()
+        df_alertas = df_alertas.sort_values(by=DatasetKeys.FRAUD_RISK_SCORE, ascending=False)
+        
+        df_alertas[cols_priorizadas].to_csv(folder_path / "alertas_priorizadas.csv", index=False)
+        
+        # 2. Guardar dataset completo (para científicos de datos)
+        df_resultados.to_csv(folder_path / "resultados_completos_tecnicos.csv", index=False)
 
-        # 3. Guardar Modelos (Clustering y AEs)
+        # 3. Guardar Modelos
         cluster_manager.save(folder_path / "ts_kmeans_model.joblib")
         for name, model in modelos.items():
             torch.save(model.state_dict(), folder_path / f"{name}.pth")
 
+        # 4. Generar Reporte Markdown Profesional
+        WaterApp._generate_markdown_report(df_alertas, folder_path)
+
         print(f"\n{'='*60}")
-        print(f"PROCESO DEEP LEARNING FINALIZADO CON ÉXITO")
-        print(f"Carpeta de salida: {folder_path}")
-        print(f"Viviendas analizadas: {len(df_resultados)}")
-        print(f"Casos SOSPECHOSOS DETECTADOS: {len(df_fraudes)}")
+        print(f"PIPELINE WATER2FRAUD FINALIZADO")
+        print(f"Reporte de Análisis: {folder_path / 'REPORTE_ANALISIS.md'}")
+        print(f"Casos crícticos detectados: {len(df_alertas)}")
         print(f"{'='*60}")
         
-        if not df_fraudes.empty:
-            print("\nTOP 5 ALERTA ROJA (Alto Error de Reconstrucción + Violación Física):")
-            # Ajusta las columnas según lo que tengas en metadata_df
-            cols = [DatasetKeys.BARRIO, DatasetKeys.FECHA, 'reconstruction_error']
-            cols = [c for c in cols if c in df_fraudes.columns]
-            print(df_fraudes.sort_values(by='reconstruction_error', ascending=False)[cols].head(5))
+        if not df_alertas.empty:
+            print("\n🚨 TOP 5 CASOS DE ALTO RIESGO:")
+            print(df_alertas[cols_priorizadas].head(5).to_string(index=False))
+
+    @staticmethod
+    def _generate_markdown_report(df_alertas: pd.DataFrame, folder_path: Path) -> None:
+        report_path = folder_path / "REPORTE_ANALISIS.md"
+        from datetime import datetime
+        with open(report_path, "w", encoding="utf-8") as f:
+            f.write("# 🏛️ REPORTE EJECUTIVO: Auditoría de Viviendas Turísticas\n\n")
+            f.write(f"**Fecha:** {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
+            f.write(f"**Alertas totales:** {len(df_alertas)}\n\n")
+            f.write("## 📌 Top 10 Alertas de Fraude\n\n")
+            f.write("| Barrio | Uso | Fecha | Riesgo (%) | Nivel | Motivo |\n")
+            f.write("| :--- | :--- | :--- | :--- | :--- | :--- |\n")
+            for _, row in df_alertas.head(10).iterrows():
+                f.write(f"| {row[DatasetKeys.BARRIO]} | {row[DatasetKeys.USO]} | {row[DatasetKeys.FECHA]} | ")
+                f.write(f"{row[DatasetKeys.FRAUD_RISK_SCORE]:.1f}% | {row[DatasetKeys.NIVEL_RIESGO]} | {row[DatasetKeys.MOTIVO]} |\n")
+            f.write("\n\n---\n*Generado por Invictus Analytics Engine*")
 
 
 def main():

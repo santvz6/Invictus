@@ -7,6 +7,8 @@ import torch
 import torch.nn as nn
 from torch.utils.data import DataLoader
 
+from src.config import DatasetKeys
+
 class EarlyStopping:
     """
     Detiene el entrenamiento si la métrica de pérdida no mejora tras un número de épocas.
@@ -94,10 +96,10 @@ def train_autoencoder(model: nn.Module, dataloader: DataLoader, epochs=100, lr=1
     return model, history
 
 
-def detect_anomalies(model: nn.Module, X_sequences: np.ndarray, metadata_df: pd.DataFrame, 
-                     feature_names=None, physics_threshold=1.5, device="cpu") -> pd.DataFrame:
+def detect_ae_anomalies(model: nn.Module, X_sequences: np.ndarray, metadata_df: pd.DataFrame, 
+                     anomalies_percentile, feature_names=None, device="cpu", ) -> pd.DataFrame:
     """
-    Evalúa secuencias mediante el Autoencoder y aplica reglas físicas para detectar anomalías.
+    Evalúa secuencias mediante el Autoencoder para detectar anomalías.
     
     Calcula el error de reconstrucción de cada serie. Si el error supera un umbral
     estadístico (percentil 95) Y el consumo real supera el consumo teórico dictado por
@@ -128,11 +130,12 @@ def detect_anomalies(model: nn.Module, X_sequences: np.ndarray, metadata_df: pd.
     # 1. ERROR GLOBAL (El que ya tenías)
     # Calculamos el MAE (Mean Absolute Error) promediando la secuencia (dim=1) y las features (dim=2)
     global_errors = torch.mean(torch.abs(reconstructions - X_tensor), dim=[1, 2]).cpu().numpy()
-    metadata_df['reconstruction_error'] = global_errors
+    metadata_df[DatasetKeys.RECONSTRUCTION_ERROR] = global_errors
     
     # 2. DESGLOSE DE ERROR POR FEATURE
     # Promediamos solo a lo largo de los 12 meses (dim=1), manteniendo separadas las features
     feature_errors = torch.mean(torch.abs(reconstructions - X_tensor), dim=1).cpu().numpy()
+    signed_feature_errors = torch.mean(X_tensor - reconstructions, dim=1).cpu().numpy()
     
     # Nombres por defecto si no se los pasas
     if feature_names is None:
@@ -141,23 +144,13 @@ def detect_anomalies(model: nn.Module, X_sequences: np.ndarray, metadata_df: pd.
     # Añadimos una columna al DataFrame por cada feature
     for i, name in enumerate(feature_names):
         metadata_df[f'error__{name}'] = feature_errors[:, i]
+        metadata_df[f'signed_error__{name}'] = signed_feature_errors[:, i]
     
     # LÓGICA DE FLAGS
     # Ejemplo: Si el error global supera el percentil 95, es anomalía
-    umbral = np.percentile(global_errors, 95)
-    metadata_df['is_ae_anomaly'] = global_errors > umbral
+    umbral = np.percentile(global_errors, anomalies_percentile)
+    metadata_df[DatasetKeys.IS_AE_ANOMALY] = global_errors > umbral
     
-    # 4. POST-PROCESAMIENTO CON LA FÍSICA
-    # Asumimos que tienes el consumo real vs teórico en el metadata_df
-    # (Lo habremos cruzado previamente al armar el dataset original)
-    if 'consumo_real' in metadata_df.columns and 'consumo_fisico_teorico' in metadata_df.columns:
-        
-        # Condición Física: ¿Supera la realidad a la teoría por más de X veces?
-        metadata_df['is_physics_anomaly'] = metadata_df['consumo_real'] > (metadata_df['consumo_fisico_teorico'] * physics_threshold)
-        
-        # ALERTA DE VIVIENDA ILEGAL (Ambos modelos concuerdan)
-        metadata_df['ALERTA_TURISTICA_ILEGAL'] = metadata_df['is_ae_anomaly'] & metadata_df['is_physics_anomaly']
-        
     return metadata_df
 
 

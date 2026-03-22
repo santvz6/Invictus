@@ -49,7 +49,8 @@ class WaterPreprocessor:
         
 
         # ENGINEERED FEATURES
-        DatasetKeys.NUM_VT_ILEGALES: MIN_MAX
+        DatasetKeys.NUM_VT_ILEGALES: MIN_MAX,
+        DatasetKeys.PCT_VT_ILEGALES: MIN_MAX
     }
     @staticmethod
     def create_sequences(df: pd.DataFrame, sequence_length=12) -> tuple[np.ndarray, pd.DataFrame]:
@@ -181,6 +182,9 @@ class WaterPreprocessor:
 
         # 6. Calcular Viviendas Ilegales (Estimación INE - Registros Oficiales GVA ponderados)
         df[DatasetKeys.NUM_VT_ILEGALES] = (df[DatasetKeys.NUM_VT_BARRIO_INE] - df[DatasetKeys.NUM_VT_BARRIO_GVA]).clip(lower=0)
+        
+        # 7. Porcentaje de Viviendas Ilegales sobre el total de contratos
+        df[DatasetKeys.PCT_VT_ILEGALES] = ((df[DatasetKeys.NUM_VT_ILEGALES] / df[DatasetKeys.NUM_CONTRATOS].replace(0, np.nan)) * 100).fillna(0).round(2)
 
         df = df.drop(columns=['pct_barrio'])
         return df
@@ -196,7 +200,10 @@ class WaterPreprocessor:
         """Pipeline principal de limpieza que orquesta los pasos de preprocesamiento de un DataFrame crudo."""
         df_not_scaled = df.copy()
         
+        # AMAEM
         df_not_scaled = AMAEMProcessor.process(df_not_scaled)
+        #df_not_scaled = df_not_scaled[df_not_scaled[DatasetKeys.USO] == "DOMESTICO"]
+        
         # Turismo
         df_not_scaled = INETourismProcessor.process(df_not_scaled)
         df_not_scaled = GVAProcessor.process(df_not_scaled)
