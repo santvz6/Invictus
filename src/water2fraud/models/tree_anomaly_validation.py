@@ -31,39 +31,52 @@ class TreeModelValidator:
 
     @staticmethod
     def run_surrogate_models(X_2d: np.ndarray, y_labels: np.ndarray):
-        """
-        Modelos Supervisados: Entrenamos RF y XGBoost para intentar replicar 
-        las decisiones del Autoencoder.
-        """
-        logger.info("Entrenando Random Forest y XGBoost como modelos sustitutos...")
+        from sklearn.model_selection import train_test_split
         
-        # Como las anomalías son minoría (desbalanceo de clases), usamos class_weight
-        rf = RandomForestClassifier(n_estimators=100, class_weight='balanced', random_state=AIConstants.RANDOM_STATE, n_jobs=-1)
+        logger.info("Entrenando modelos con separación Train/Test...")
         
-        # XGBoost maneja el desbalanceo con scale_pos_weight
-        num_negatives = np.sum(y_labels == 0)
-        num_positives = np.sum(y_labels == 1)
-        # Protegemos contra división por cero si no hay anomalías
+        # 1. Separamos los datos (80% entrenamiento, 20% test)
+        X_train, X_test, y_train, y_test = train_test_split(
+            X_2d, y_labels, test_size=0.2, random_state=AIConstants.RANDOM_STATE, stratify=y_labels
+        )
+        
+        # 2. Calculamos el peso solo con el tren de entrenamiento
+        num_negatives = np.sum(y_train == 0)
+        num_positives = np.sum(y_train == 1)
         peso_positivo = num_negatives / num_positives if num_positives > 0 else 1
         
-        xgb = XGBClassifier(n_estimators=100, scale_pos_weight=peso_positivo, random_state=AIConstants.RANDOM_STATE, eval_metric='logloss')
+        # 3. Configuramos modelos
+        rf = RandomForestClassifier(n_estimators=100, class_weight='balanced', 
+                                    random_state=AIConstants.RANDOM_STATE, n_jobs=-1)
+        xgb = XGBClassifier(n_estimators=100, scale_pos_weight=peso_positivo, 
+                            random_state=AIConstants.RANDOM_STATE, eval_metric='logloss')
 
-        # Entrenamos
-        rf.fit(X_2d, y_labels)
-        xgb.fit(X_2d, y_labels)
+        # 4. Entrenamos con TRAIN
+        rf.fit(X_train, y_train)
+        xgb.fit(X_train, y_train)
 
-        # Predicciones
-        rf_preds = rf.predict(X_2d)
-        xgb_preds = xgb.predict(X_2d)
+        # 5. Predecimos sobre TEST (aquí es donde se ve la verdad)
+        rf_preds = rf.predict(X_test)
+        xgb_preds = xgb.predict(X_test)
 
-        return rf, xgb, rf_preds, xgb_preds
-
+        # Retornamos los modelos y las etiquetas reales de test para evaluar
+        return rf, xgb, rf_preds, xgb_preds, y_test
+    
     @staticmethod
     def evaluate_surrogate(y_true, y_pred, model_name, output_path):
         """Imprime un reporte rápido de cómo de bien el árbol replicó a la IA."""
         print(f"\\n--- Resultados de {model_name} frente al Autoencoder ---")
         cm = confusion_matrix(y_true, y_pred)
-        plt.savefig(output_path / f"{model_name}_cm.png")
+        
+        plt.figure(figsize=(8, 6))
+        sns.heatmap(cm, annot=True, fmt='d', cmap='Blues') # 'd' para números enteros
+        plt.title(f'Confusion Matrix - {model_name}')
+        plt.ylabel('Actual')
+        plt.xlabel('Predicted')
+        save_file = output_path / f"{model_name}_cm.png"
+        plt.savefig(save_file)
+        plt.close()
+
         print(cm)
         print(classification_report(y_true, y_pred))
 

@@ -221,6 +221,7 @@ class WaterPreprocessor:
         df = SentinelProcessor.process(df)
         df = FisicosProcessor.process(df)
 
+        # Viviendas Turísticas Ilegales INE - GVA
         df = WaterPreprocessor._engineer_features(df)
 
         df_scaled = WaterPreprocessor._scale_features(df)
