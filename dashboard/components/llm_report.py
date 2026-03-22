@@ -72,7 +72,7 @@ def render_llm_report(barrio: str | None = None):
 BARRIO: {barrio}
 MODELO: LSTM-Autoencoder (Water2Fraud v1.0)
 VARIABLES: consumo, consumo_teorico_fisica, reconstruction_error,
-           ALERTA_TURISTICA_ILEGAL, num_vt_barrio, pct_vt_barrio,
+           ALERTA_TURISTICA_ILEGAL, num_vt_barrio, porcentaje_vt_barrio %,
            temperatura_media, precipitacion
 PROMPT: "Analiza las anomalías del barrio {barrio}. Explica las causas 
          más probables del desvío entre consumo real y esperado, 

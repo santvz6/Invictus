@@ -40,8 +40,8 @@ FEATURES_DISPONIBLES = {
     "Consumo Total (m³)":        DatasetKeys.CONSUMO,
     "Nº Contratos":              DatasetKeys.NUM_CONTRATOS,
     "Ratio Consumo/Contrato":    DatasetKeys.CONSUMO_RATIO,
-    "% Viviendas Turísticas":    DatasetKeys.PCT_VT_BARRIO,
-    "Nº VT por Barrio":          DatasetKeys.NUM_VT_BARRIO,
+    "% Viviendas Turísticas":    DatasetKeys.PCT_VT_BARRIO_INE,
+    "Nº VT por Barrio":          DatasetKeys.NUM_VT_BARRIO_INE,
     "Temperatura Media (°C)":    DatasetKeys.TEMP_MEDIA,
     "Precipitación (mm)":        DatasetKeys.PRECIPITACION,
 }
@@ -70,9 +70,15 @@ def load_dataframe() -> pd.DataFrame:
             experimentos = sorted([d for d in Paths.EXPERIMENTS_DIR.iterdir() if d.is_dir()])
             if experimentos:
                 latest_exp = experimentos[-1]
-                res_path = latest_exp / "resultados_completos.csv"
+                res_path = latest_exp / "resultados_completos_tecnicos.csv"
                 if res_path.exists():
                     df_res = pd.read_csv(res_path)
+                    # Quitar espacios en blanco de los nombres de columnas (Bug de Pandas espacial al guardar)
+                    df_res.columns = df_res.columns.str.strip()
+                    # Quitar espacios en blanco de los valores string para que el merge por 'barrio' funcione
+                    # NOTA: Usamos .map en lugar de .applymap para evitar el FutureWarning de Pandas
+                    df_res = df_res.map(lambda x: x.strip() if isinstance(x, str) else x)
+                    
                     if DatasetKeys.FECHA in df_res.columns:
                         df_res[DatasetKeys.FECHA] = pd.to_datetime(df_res[DatasetKeys.FECHA], errors="coerce")
                         
@@ -80,23 +86,40 @@ def load_dataframe() -> pd.DataFrame:
                     if DatasetKeys.USO in df.columns and DatasetKeys.USO in df_res.columns:
                         cols_merge.append(DatasetKeys.USO)
                         
-                    cols_extract = ["reconstruction_error", "is_ae_anomaly", "ALERTA_TURISTICA_ILEGAL", "cluster"]
+                    cols_extract = [
+                        DatasetKeys.RECONSTRUCTION_ERROR, DatasetKeys.AE_SCORE, 
+                        DatasetKeys.IS_AE_ANOMALY, DatasetKeys.ALERTA_TURISTICA_ILEGAL, 
+                        DatasetKeys.CLUSTER, DatasetKeys.CONSUMO_FISICO_ESPERADO, 
+                        DatasetKeys.PREDICCION_FOURIER
+                    ]
                     cols_extract = [c for c in cols_extract if c in df_res.columns]
+
+                    # IMPORTANTE: Asegurar que las columnas de interés son numéricas 
+                    # (el strip las puede dejar como object si venían con espacios)
+                    for col in cols_extract:
+                        if col in [DatasetKeys.IS_AE_ANOMALY, DatasetKeys.ALERTA_TURISTICA_ILEGAL]:
+                            df_res[col] = df_res[col].map(lambda x: str(x).lower() == 'true')
+                        else:
+                            df_res[col] = pd.to_numeric(df_res[col], errors='coerce').fillna(0.0)
                     
                     if cols_extract:
                         df_res_sub = df_res[cols_merge + cols_extract].drop_duplicates(subset=cols_merge)
                         df = df.merge(df_res_sub, on=cols_merge, how="left")
 
         # 2. Parche de seguridad para el Dashboard: asegurar las columnas de inferencia
-        if "reconstruction_error" not in df.columns:
+        if DatasetKeys.AE_SCORE not in df.columns:
             if DatasetKeys.CONSUMO_FISICO_ESPERADO in df.columns and DatasetKeys.CONSUMO in df.columns:
                 denominador = df[DatasetKeys.CONSUMO_FISICO_ESPERADO].fillna(1).replace(0, 1)
-                df["reconstruction_error"] = (abs(df[DatasetKeys.CONSUMO] - df[DatasetKeys.CONSUMO_FISICO_ESPERADO]) / denominador).round(4)
+                df[DatasetKeys.AE_SCORE] = (abs(df[DatasetKeys.CONSUMO] - df[DatasetKeys.CONSUMO_FISICO_ESPERADO]) / denominador).round(4) * 100
             else:
-                df["reconstruction_error"] = 0.0
-        df["reconstruction_error"] = df["reconstruction_error"].fillna(0.0)
+                df[DatasetKeys.AE_SCORE] = 0.0
+        for col in [DatasetKeys.RECONSTRUCTION_ERROR, DatasetKeys.AE_SCORE]:
+            if col in df.columns:
+                df[col] = df[col].fillna(0.0)
+            else:
+                df[col] = 0.0
 
-        for col, default_val in [("is_ae_anomaly", False), ("ALERTA_TURISTICA_ILEGAL", False), ("cluster", 0)]:
+        for col, default_val in [(DatasetKeys.IS_AE_ANOMALY, False), (DatasetKeys.ALERTA_TURISTICA_ILEGAL, False), (DatasetKeys.CLUSTER, 0)]:
             if col not in df.columns:
                 df[col] = default_val
             df[col] = df[col].fillna(default_val)
@@ -144,16 +167,16 @@ def load_dataframe() -> pd.DataFrame:
                 DatasetKeys.CONSUMO:              round(consumo, 1),
                 DatasetKeys.NUM_CONTRATOS:        base_contratos + int(np.random.normal(0, 5)),
                 DatasetKeys.CONSUMO_RATIO:        round(consumo / base_contratos, 3),
-                DatasetKeys.PCT_VT_BARRIO:        round(pct_vt + np.random.normal(0, 1), 2),
-                DatasetKeys.NUM_VT_BARRIO:        int(pct_vt * base_contratos / 100),
+                DatasetKeys.PCT_VT_BARRIO_INE:        round(pct_vt + np.random.normal(0, 1), 2),
+                DatasetKeys.NUM_VT_BARRIO_INE:        int(pct_vt * base_contratos / 100),
                 DatasetKeys.TEMP_MEDIA:           round(temp_media, 1),
                 DatasetKeys.PRECIPITACION:        round(precip, 1),
                 DatasetKeys.CONSUMO_FISICO_ESPERADO: round(consumo_fisico, 1),
                 DatasetKeys.PREDICCION_FOURIER:   round(consumo_fisico * 0.95, 1),
-                "reconstruction_error":           round(abs(consumo - consumo_fisico) / consumo_fisico, 4),
-                "is_ae_anomaly":                  is_anomaly,
-                "ALERTA_TURISTICA_ILEGAL":        is_anomaly,
-                "cluster":                        int(np.random.randint(0, 3)),
+                DatasetKeys.RECONSTRUCTION_ERROR: round(abs(consumo - consumo_fisico) / consumo_fisico, 4),
+                DatasetKeys.IS_AE_ANOMALY:        is_anomaly,
+                DatasetKeys.ALERTA_TURISTICA_ILEGAL: is_anomaly,
+                DatasetKeys.CLUSTER:              int(np.random.randint(0, 3)),
             })
 
     df = pd.DataFrame(rows)
@@ -207,15 +230,15 @@ def aggregate_by_barrio(df: pd.DataFrame) -> pd.DataFrame:
         DatasetKeys.CONSUMO:                  "sum",
         DatasetKeys.NUM_CONTRATOS:            "sum",
         DatasetKeys.CONSUMO_RATIO:            "mean",
-        DatasetKeys.PCT_VT_BARRIO:            "mean",
-        DatasetKeys.NUM_VT_BARRIO:            "sum",
+        DatasetKeys.PCT_VT_BARRIO_INE:        "mean",
+        DatasetKeys.NUM_VT_BARRIO_INE:        "sum",
         DatasetKeys.TEMP_MEDIA:               "mean",
         DatasetKeys.PRECIPITACION:            "mean",
         DatasetKeys.CONSUMO_FISICO_ESPERADO:  "sum",
         DatasetKeys.PREDICCION_FOURIER:       "sum",
-        "reconstruction_error":              "mean",
-        "is_ae_anomaly":                     "sum",
-        "ALERTA_TURISTICA_ILEGAL":           "sum",
+        DatasetKeys.AE_SCORE:                 "mean",
+        DatasetKeys.IS_AE_ANOMALY:            "sum",
+        DatasetKeys.ALERTA_TURISTICA_ILEGAL:  "sum",
     }
     # Filtramos columnas que existan
     agg = {k: v for k, v in agg.items() if k in df.columns}

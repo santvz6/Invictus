@@ -7,7 +7,7 @@ import torch
 import torch.nn as nn
 from torch.utils.data import DataLoader
 
-from src.config import DatasetKeys
+from src.config import DatasetKeys, AIConstants
 
 class EarlyStopping:
     """
@@ -97,7 +97,7 @@ def train_autoencoder(model: nn.Module, dataloader: DataLoader, epochs=100, lr=1
 
 
 def detect_ae_anomalies(model: nn.Module, X_sequences: np.ndarray, metadata_df: pd.DataFrame, 
-                     anomalies_percentile, feature_names=None, device="cpu", ) -> pd.DataFrame:
+                     feature_names=None, device="cpu", ) -> pd.DataFrame:
     """
     Evalúa secuencias mediante el Autoencoder para detectar anomalías.
     
@@ -148,7 +148,7 @@ def detect_ae_anomalies(model: nn.Module, X_sequences: np.ndarray, metadata_df: 
     
     # LÓGICA DE FLAGS Y SCORES LOCALES (POR CLÚSTER)
     # 100 significa que el error está exactamente en el umbral del percentil X
-    umbral = np.percentile(global_errors, anomalies_percentile)
+    umbral = np.percentile(global_errors,  AIConstants.AE_ANOMALIES_PERCENTILE)
     metadata_df[DatasetKeys.IS_AE_ANOMALY] = global_errors > umbral
     metadata_df[DatasetKeys.AE_SCORE] = (global_errors / (umbral if umbral > 0 else 1e-9)) * 100
     

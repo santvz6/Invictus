@@ -12,6 +12,8 @@ from folium.plugins import HeatMap
 import streamlit as st
 from streamlit_folium import st_folium
 
+from src.config import DatasetKeys
+
 ALICANTE_CENTER = [38.3452, -0.4810]
 ALICANTE_ZOOM   = 13
 
@@ -42,23 +44,30 @@ def render_map(df_barrio: pd.DataFrame, feature_col: str, gdf=None) -> dict:
     )
 
     # ── Capa Choropleth (si tenemos GeoDataFrame real) ─────────────────
+    choropleth_success = False
     if gdf is not None and not gdf.empty and feature_col in df_barrio.columns:
         try:
-            _add_choropleth(m, gdf, df_barrio, feature_col)
+            choropleth_success = _add_choropleth(m, gdf, df_barrio, feature_col)
         except Exception:
-            _add_heatmap_fallback(m, df_barrio, feature_col)
-    else:
+            choropleth_success = False
+    
+    if not choropleth_success:
         # ── Fallback: HeatMap con coordenadas aproximadas por barrio ──
         _add_heatmap_fallback(m, df_barrio, feature_col)
 
     # ── Leyenda flotante ───────────────────────────────────────────────
     _add_legend(m, feature_col, df_barrio.get(feature_col, pd.Series([0])))
 
-    return st_folium(m, width="100%", height=550, returned_objects=["last_active_drawing", "last_clicked"])
+    return st_folium(
+        m, 
+        use_container_width=True, 
+        height=550, 
+        returned_objects=["last_active_drawing", "last_clicked"]
+    )
 
 
-def _add_choropleth(m, gdf, df_barrio, feature_col):
-    """Añade capa Choropleth usando geometrías reales + datos."""
+def _add_choropleth(m, gdf, df_barrio, feature_col) -> bool:
+    """Añade capa Choropleth usando geometrías reales + datos. Retorna True si tuvo éxito."""
     import branca.colormap as cm
 
     # Merge geometría + datos
@@ -82,16 +91,16 @@ def _add_choropleth(m, gdf, df_barrio, feature_col):
     gdf_merged = gdf_merged.merge(df_temp, on="barrio_limpio", how="inner")
     
     if gdf_merged.empty:
-        return
+        return False
         
     gdf_merged[feature_col] = gdf_merged[feature_col].fillna(0)
     
-    for col in ["reconstruction_error", "ALERTA_TURISTICA_ILEGAL"]:
+    for col in [DatasetKeys.RECONSTRUCTION_ERROR, DatasetKeys.ALERTA_TURISTICA_ILEGAL]:
         if col not in gdf_merged.columns:
             gdf_merged[col] = 0.0
             
-    if "reconstruction_error" in gdf_merged.columns:
-        gdf_merged["reconstruction_error"] = gdf_merged["reconstruction_error"].round(3)
+    if DatasetKeys.RECONSTRUCTION_ERROR in gdf_merged.columns:
+        gdf_merged[DatasetKeys.RECONSTRUCTION_ERROR] = gdf_merged[DatasetKeys.RECONSTRUCTION_ERROR].round(3)
 
     # 2. ESCALADO ROBUSTO CONTRA OUTLIERS
     vmin = gdf_merged[feature_col].quantile(0.05)
@@ -124,7 +133,7 @@ def _add_choropleth(m, gdf, df_barrio, feature_col):
         highlight_function=highlight_fn,
         tooltip=folium.GeoJsonTooltip(
             fields=["barrio_limpio", feature_col,
-                    "reconstruction_error", "ALERTA_TURISTICA_ILEGAL"],
+                    DatasetKeys.RECONSTRUCTION_ERROR, DatasetKeys.ALERTA_TURISTICA_ILEGAL],
             aliases=["Barrio:", f"{feature_col}:", "Error reconstrucción:", "Alertas:"],
             localize=True,
             style=("background-color: #0d1b2a; color: #e0e0e0; font-family: 'Inter', sans-serif; "
@@ -134,6 +143,7 @@ def _add_choropleth(m, gdf, df_barrio, feature_col):
     ).add_to(m)
 
     colormap.add_to(m)
+    return True
 
 
 def _add_heatmap_fallback(m, df_barrio, feature_col):
@@ -169,7 +179,9 @@ def _add_heatmap_fallback(m, df_barrio, feature_col):
         return
 
     series = df_barrio[feature_col].replace([np.inf, -np.inf], np.nan).fillna(0)
-    vmax = series.max() or 1
+    vmax = series.max()
+    if pd.isna(vmax) or vmax == 0:
+        vmax = 1
 
     heat_data = []
     for _, row in df_barrio.iterrows():
@@ -196,7 +208,7 @@ def _add_heatmap_fallback(m, df_barrio, feature_col):
             ALICANTE_CENTER[1] + np.random.uniform(-0.04, 0.04),
         ))
         val = row.get(feature_col, 0)
-        anomalias = int(row.get("ALERTA_TURISTICA_ILEGAL", 0))
+        anomalias = int(row.get(DatasetKeys.ALERTA_TURISTICA_ILEGAL, 0))
         folium.CircleMarker(
             location=[lat, lon],
             radius=6,

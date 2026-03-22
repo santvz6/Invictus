@@ -40,7 +40,7 @@ def render_whatif(df: pd.DataFrame, barrio: str | None = None):
 
     temp_range    = _safe_range(DatasetKeys.TEMP_MEDIA,      5.0,  40.0)
     precip_range  = _safe_range(DatasetKeys.PRECIPITACION,   0.0, 120.0)
-    vt_range      = _safe_range(DatasetKeys.NUM_VT_BARRIO,   0.0, 200.0)
+    vt_range      = _safe_range(DatasetKeys.NUM_VT_BARRIO_INE,   0.0, 200.0)
     ratio_range   = _safe_range(DatasetKeys.CONSUMO_RATIO,   0.5,  30.0)
 
     # Valores por defecto: mediana del barrio si está disponible
@@ -49,7 +49,7 @@ def render_whatif(df: pd.DataFrame, barrio: str | None = None):
         df_b = df[df[DatasetKeys.BARRIO] == barrio]
         for col, key in [(DatasetKeys.TEMP_MEDIA, "temp"),
                          (DatasetKeys.PRECIPITACION, "precip"),
-                         (DatasetKeys.NUM_VT_BARRIO, "vt"),
+                         (DatasetKeys.NUM_VT_BARRIO_INE, "vt"),
                          (DatasetKeys.CONSUMO_RATIO, "ratio")]:
             if col in df_b.columns and not df_b[col].empty:
                 defaults[key] = float(df_b[col].median())

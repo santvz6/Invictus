@@ -208,7 +208,7 @@ class WaterApp:
             model = modelos[model_key]
             
             # Detección Autoencoder
-            df_anomalias = detect_ae_anomalies(model, X_cluster, meta_cluster, AIConstants.AE_ANOMALIES_PERCENTILE, 
+            df_anomalias = detect_ae_anomalies(model, X_cluster, meta_cluster, 
                                                feature_names=feature_names, device=device)
             resultados_finales.append(df_anomalias) 
             
@@ -257,7 +257,7 @@ class WaterApp:
         # Aplicamos la restricción física de "Direccionalidad"
         df_final.loc[df_final[ae_consumo_col] <= 0, DatasetKeys.AE_SCORE] = 0
         
-        # Penalizamos directamente si NO es anomalía del AE (Puerta lógica sugerida por usuario)
+        # Penalizamos directamente si NO es anomalía del AE
         df_final.loc[df_final[DatasetKeys.IS_AE_ANOMALY] == False, DatasetKeys.AE_SCORE] *= 0.5
 
         df_final[DatasetKeys.RESIDUO_POSITIVO] = df_final[DatasetKeys.RESIDUO].clip(lower=0)
@@ -333,28 +333,10 @@ class WaterApp:
         folder_path = Paths.EXPERIMENTS_DIR / timestamp
         folder_path.mkdir(parents=True, exist_ok=True)
         
-        # 1. Alertas Priorizadas (Con nombres legibles y diferenciados)
-        cols_final_renamed = {
-            DatasetKeys.BARRIO: "Barrio",
-            DatasetKeys.USO: "Uso",
-            DatasetKeys.FECHA: "Fecha",
-            DatasetKeys.CONSUMO_RATIO: "Consumo_Real_L_dia",
-            DatasetKeys.RESIDUO: "Diferencia_Fisica_L",
-            DatasetKeys.IS_AE_ANOMALY: "Alerta_Solo_Autoencoder",
-            DatasetKeys.AE_SCORE: "Riesgo_Autoencoder_%",
-            DatasetKeys.PHYSICS_SCORE: "Riesgo_Fisico_%",
-            DatasetKeys.FRAUD_RISK_SCORE: "Puntaje_Hibrido_Final",
-            DatasetKeys.NIVEL_RIESGO: "Nivel_Riesgo",
-            DatasetKeys.MOTIVO: "Motivo_Explicacion"
-        }
         
-        cols_presentes = [c for c in cols_final_renamed.keys() if c in df_resultados.columns]
         df_alertas = df_resultados[df_resultados[DatasetKeys.ALERTA_TURISTICA_ILEGAL] == True].copy()
-        df_alertas = df_alertas.sort_values(by=DatasetKeys.FRAUD_RISK_SCORE, ascending=False)
-        
-        # Guardar CSV Priorizado con nombres claros
-        df_priorizadas = df_alertas[cols_presentes].rename(columns=cols_final_renamed)
-        df_priorizadas.to_csv(folder_path / "alertas_priorizadas.csv", index=False)
+        df_alertas = df_alertas.sort_values(by=DatasetKeys.FRAUD_RISK_SCORE, ascending=False)    
+        df_alertas.to_csv(folder_path / "alertas_priorizadas.csv", index=False)
         
         # 2. Guardar dataset completo (para científicos de datos)
         df_resultados.to_csv(folder_path / "resultados_completos_tecnicos.csv", index=False)
@@ -375,7 +357,7 @@ class WaterApp:
         
         if not df_alertas.empty:
             print("\n🚨 TOP 5 CASOS DE ALTO RIESGO:")
-            print(df_priorizadas.head(5).to_string(index=False))
+            print(df_alertas.head(5).to_string(index=False))
 
     @staticmethod
     def _generate_markdown_report(df_alertas: pd.DataFrame, folder_path: Path) -> None:

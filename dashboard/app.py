@@ -117,7 +117,7 @@ with st.spinner("⏳ Cargando datos del pipeline Water2Fraud..."):
 is_mock = not (
     hasattr(df_full, "_source") or  # marca real (no aplica)
     (os.path.exists(os.path.join(os.path.dirname(__file__), "..",
-     "internal", "data", "processed", "csv", "AMAEM-2022-2024_not_scaled.csv")))
+     "internal", "processed", "AMAEM-2022-2024_not_scaled.csv")))
 )
 
 
@@ -210,7 +210,7 @@ st.markdown("""
 
 # KPIs globales rápidos
 total_contratos = int(df_filtered[DatasetKeys.NUM_CONTRATOS].sum()) if DatasetKeys.NUM_CONTRATOS in df_filtered.columns else 0
-total_alertas   = int(df_filtered["ALERTA_TURISTICA_ILEGAL"].sum()) if "ALERTA_TURISTICA_ILEGAL" in df_filtered.columns else 0
+total_alertas   = int(df_filtered[DatasetKeys.ALERTA_TURISTICA_ILEGAL].sum()) if DatasetKeys.ALERTA_TURISTICA_ILEGAL in df_filtered.columns else 0
 total_consumo   = df_filtered[DatasetKeys.CONSUMO].sum() if DatasetKeys.CONSUMO in df_filtered.columns else 0
 num_barrios     = df_filtered[DatasetKeys.BARRIO].nunique()
 

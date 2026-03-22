@@ -17,7 +17,7 @@ def _get_ae_reconstruction(df_full: pd.DataFrame, df_b: pd.DataFrame, barrio: st
     try:
         from src.water2fraud.models.autoencoder import LSTMAutoencoder
         
-        cluster_id = df_b["cluster"].iloc[0] if "cluster" in df_b.columns else 0
+        cluster_id = df_b[DatasetKeys.CLUSTER].iloc[0] if DatasetKeys.CLUSTER in df_b.columns else 0
         
         if not Paths.EXPERIMENTS_DIR.exists(): return None
         exp_dirs = sorted([d for d in Paths.EXPERIMENTS_DIR.iterdir() if d.is_dir()])
@@ -42,13 +42,8 @@ def _get_ae_reconstruction(df_full: pd.DataFrame, df_b: pd.DataFrame, barrio: st
         uso_principal = "DOMESTICO" if "DOMESTICO" in df_b_sc[DatasetKeys.USO].values else df_b_sc[DatasetKeys.USO].iloc[0]
         df_b_sc = df_b_sc[df_b_sc[DatasetKeys.USO] == uso_principal]
         
-        feature_cols = [
-            DatasetKeys.CONSUMO_RATIO, DatasetKeys.MES_SIN, DatasetKeys.MES_COS,
-            DatasetKeys.NUM_VT_BARRIO, DatasetKeys.PCT_VT_BARRIO, 
-            DatasetKeys.OCUPACIONES_VT_PROV, DatasetKeys.PERNOCTACIONES_VT_PROV,
-            DatasetKeys.CONSUMO_FISICO_ESPERADO, DatasetKeys.TEMP_MEDIA, 
-            DatasetKeys.PRECIPITACION, DatasetKeys.NDVI_SATELITE
-        ]
+        from src.water2fraud.features.preprocessor import WaterPreprocessor
+        feature_cols = list(WaterPreprocessor.FEATURES.keys())
         feature_cols = [c for c in feature_cols if c in df_b_sc.columns]
         if not feature_cols: return None
         
@@ -116,11 +111,11 @@ def render_anomaly_panel(df: pd.DataFrame, barrio: str):
         DatasetKeys.NUM_CONTRATOS: 'sum',
     }
     if esperado_col in df_b.columns:
-        agg_dict[esperado_col] = 'sum'
-    if "ALERTA_TURISTICA_ILEGAL" in df_b.columns:
-        agg_dict["ALERTA_TURISTICA_ILEGAL"] = 'max' # Si algún "uso" dio alerta, se marca el mes
-    if "reconstruction_error" in df_b.columns:
-        agg_dict["reconstruction_error"] = 'mean'
+        agg_dict[esperado_col] = 'mean'
+    if DatasetKeys.ALERTA_TURISTICA_ILEGAL in df_b.columns:
+        agg_dict[DatasetKeys.ALERTA_TURISTICA_ILEGAL] = 'max' # Si algún "uso" dio alerta, se marca el mes
+    if DatasetKeys.AE_SCORE in df_b.columns:
+        agg_dict[DatasetKeys.AE_SCORE] = 'mean'
         
     df_monthly = df_b.groupby(DatasetKeys.FECHA).agg(agg_dict).reset_index()
     df_monthly = df_monthly.sort_values(DatasetKeys.FECHA)
@@ -133,21 +128,19 @@ def render_anomaly_panel(df: pd.DataFrame, barrio: str):
     contratos_safe = df_monthly[DatasetKeys.NUM_CONTRATOS].replace(0, 1)
     df_monthly["ratio_real"] = df_monthly[DatasetKeys.CONSUMO] / contratos_safe
     if esperado_col in df_monthly.columns:
-        df_monthly["ratio_esperado"] = df_monthly[esperado_col] / contratos_safe
+        df_monthly["ratio_esperado"] = df_monthly[esperado_col]
     else:
-        df_monthly["ratio_esperado"] = 0.0
+        # Fallback si no está el modelo híbrido (muy poco probable)
+        df_monthly["ratio_esperado"] = df_monthly["ratio_real"] * 0.950
 
     # --- Integrar Reconstrucción del Autoencoder ---
     df_ae = _get_ae_reconstruction(df, df_b, barrio)
     usar_ae = False
     if df_ae is not None and not df_ae.empty:
         df_monthly = df_monthly.merge(df_ae, on=DatasetKeys.FECHA, how="left")
-        df_monthly["ratio_esperado_final"] = df_monthly["ae_reconstruction"].fillna(df_monthly["ratio_esperado"])
         usar_ae = True
-    else:
-        df_monthly["ratio_esperado_final"] = df_monthly["ratio_esperado"]
 
-    alertas = df_monthly["ALERTA_TURISTICA_ILEGAL"].sum() if "ALERTA_TURISTICA_ILEGAL" in df_monthly.columns else 0
+    alertas = df_monthly[DatasetKeys.ALERTA_TURISTICA_ILEGAL].sum() if DatasetKeys.ALERTA_TURISTICA_ILEGAL in df_monthly.columns else 0
 
     c1, c2 = st.columns(2)
     c1.metric("Consumo Total", f"{consumo_total:,.0f} m³", 
@@ -160,17 +153,28 @@ def render_anomaly_panel(df: pd.DataFrame, barrio: str):
     
     fig = go.Figure()
 
-    # Área base de Ratio Esperado (Añade una zona segura sombreada visualmente agradable)
+    # Área base de Ratio Esperado (Modelo Físico)
     fig.add_trace(go.Scatter(
         x=df_monthly[DatasetKeys.FECHA], 
-        y=df_monthly["ratio_esperado_final"],
+        y=df_monthly["ratio_esperado"],
         mode='lines', 
-        name='Esperado (Autoencoder)' if usar_ae else 'Ratio Esperado',
-        line=dict(color='#52b788', width=3, dash='dot'),
+        name='Esperado (Físico)',
+        line=dict(color='#52b788', width=2, dash='dash'),
         fill='tozeroy',
-        fillcolor='rgba(82, 183, 136, 0.1)',
-        line_shape='spline' # Suavizado elegante
+        fillcolor='rgba(82, 183, 136, 0.05)',
+        line_shape='spline'
     ))
+
+    # Línea de Reconstrucción del Autoencoder (Modelo de IA)
+    if "ae_reconstruction" in df_monthly.columns and not df_monthly["ae_reconstruction"].isna().all():
+        fig.add_trace(go.Scatter(
+            x=df_monthly[DatasetKeys.FECHA], 
+            y=df_monthly["ae_reconstruction"],
+            mode='lines', 
+            name='Esperado (LSTM-IA)',
+            line=dict(color='#fca311', width=3, dash='dot'),
+            line_shape='spline'
+        ))
 
     # Línea de Ratio Real
     fig.add_trace(go.Scatter(
@@ -184,18 +188,33 @@ def render_anomaly_panel(df: pd.DataFrame, barrio: str):
     ))
 
     # Resaltar puntos exactos de Anomalía
-    if "ALERTA_TURISTICA_ILEGAL" in df_monthly.columns:
-        df_anomalias = df_monthly[df_monthly["ALERTA_TURISTICA_ILEGAL"] > 0]
+    if DatasetKeys.ALERTA_TURISTICA_ILEGAL in df_monthly.columns:
+        df_anomalias = df_monthly[df_monthly[DatasetKeys.ALERTA_TURISTICA_ILEGAL] > 0]
         if not df_anomalias.empty:
-            fig.add_trace(go.Scatter(
-                x=df_anomalias[DatasetKeys.FECHA], 
-                y=df_anomalias["ratio_real"],
-                mode='markers', 
-                name='Anomalía Detectada',
-                marker=dict(color='#ff4b4b', size=12, symbol='x', line=dict(width=2, color='#ff4b4b')),
-                hovertext=df_anomalias["reconstruction_error"].apply(lambda x: f"Error AE: {x:.3f}"),
-                hoverinfo="text+x+y"
-            ))
+            df_exceso = df_anomalias[df_anomalias["ratio_real"] > df_anomalias["ratio_esperado"]]
+            df_defecto = df_anomalias[df_anomalias["ratio_real"] <= df_anomalias["ratio_esperado"]]
+            
+            if not df_exceso.empty:
+                fig.add_trace(go.Scatter(
+                    x=df_exceso[DatasetKeys.FECHA], 
+                    y=df_exceso["ratio_real"],
+                    mode='markers', 
+                    name='Anomalía (Exceso)',
+                    marker=dict(color='#ff4b4b', size=8, symbol='x', line=dict(width=0.6, color='#ff4b4b')),
+                    hovertext=df_exceso[DatasetKeys.AE_SCORE].apply(lambda x: f"Riesgo AE (IA): {x:.1f}%"),
+                    hoverinfo="text+x+y"
+                ))
+                
+            if not df_defecto.empty:
+                fig.add_trace(go.Scatter(
+                    x=df_defecto[DatasetKeys.FECHA], 
+                    y=df_defecto["ratio_real"],
+                    mode='markers', 
+                    name='Anomalía (Defecto)',
+                    marker=dict(color='#ffa500', size=8, symbol='cross', line=dict(width=0.6, color='#ffa500')),
+                    hovertext=df_defecto[DatasetKeys.AE_SCORE].apply(lambda x: f"Riesgo AE (IA): {x:.1f}%"),
+                    hoverinfo="text+x+y"
+                ))
 
     fig.update_layout(
         template="plotly_dark",
@@ -213,19 +232,21 @@ def render_anomaly_panel(df: pd.DataFrame, barrio: str):
 
     # 4. Listado Tabular de Anomalías
     st.markdown("#### 🚨 Registro de Anomalías")
-    if "ALERTA_TURISTICA_ILEGAL" in df_monthly.columns and alertas > 0:
-        cols_to_show = [DatasetKeys.FECHA, "ratio_real", "ratio_esperado_final", "reconstruction_error"]
+    if DatasetKeys.ALERTA_TURISTICA_ILEGAL in df_monthly.columns and alertas > 0:
+        cols_to_show = [DatasetKeys.FECHA, "ratio_real", "ratio_esperado", DatasetKeys.AE_SCORE]
         cols_to_show = [c for c in cols_to_show if c in df_monthly.columns]
         
         df_table = df_anomalias[cols_to_show].copy()
         df_table[DatasetKeys.FECHA] = df_table[DatasetKeys.FECHA].dt.strftime("%Y-%m")
+        if DatasetKeys.AE_SCORE in df_table.columns:
+            df_table[DatasetKeys.AE_SCORE] = df_table[DatasetKeys.AE_SCORE].apply(lambda x: f"{x:.1f}%")
         
         # Formateo y renombrado visual
         df_table = df_table.rename(columns={
             DatasetKeys.FECHA: "Mes",
             "ratio_real": "Ratio Real",
-            "ratio_esperado_final": "Esperado (AE)" if usar_ae else "Ratio Esperado",
-            "reconstruction_error": "Error Autoencoder"
+            "ratio_esperado": "Esperado (AE)" if usar_ae else "Ratio Esperado",
+            DatasetKeys.AE_SCORE: "Riesgo Anomalía (IA)"
         })
         
         st.dataframe(df_table.style.format(precision=2), hide_index=True, use_container_width=True)
