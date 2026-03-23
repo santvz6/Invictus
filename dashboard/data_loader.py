@@ -164,6 +164,7 @@ def load_dataframe() -> pd.DataFrame:
             rows.append({
                 DatasetKeys.BARRIO:               barrio,
                 DatasetKeys.FECHA:                fecha,
+                DatasetKeys.USO:                  "DOMESTICO",
                 DatasetKeys.CONSUMO:              round(consumo, 1),
                 DatasetKeys.NUM_CONTRATOS:        base_contratos + int(np.random.normal(0, 5)),
                 DatasetKeys.CONSUMO_RATIO:        round(consumo / base_contratos, 3),
