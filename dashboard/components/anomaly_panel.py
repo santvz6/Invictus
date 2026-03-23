@@ -60,9 +60,14 @@ def _get_ae_reconstruction(df_full: pd.DataFrame, df_b: pd.DataFrame, barrio: st
         model.eval()
         
         idx_ratio = feature_cols.index(DatasetKeys.CONSUMO_RATIO)
-        min_val = df_full[DatasetKeys.CONSUMO_RATIO].min()
-        max_val = df_full[DatasetKeys.CONSUMO_RATIO].max()
-        if min_val == max_val: max_val = min_val + 1e-5
+        
+        # FIX: The model trained with RobustScaler fitted on the ENTIRE unscaled dataset
+        from sklearn.preprocessing import RobustScaler
+        if not Paths.PROC_CSV_AMAEM_NOT_SCALED.exists(): return None
+        df_raw_all = pd.read_csv(Paths.PROC_CSV_AMAEM_NOT_SCALED)
+        robust_scaler = RobustScaler()
+        robust_scaler.fit(df_raw_all[[DatasetKeys.CONSUMO_RATIO]])
+
         
         fechas_reconst = []
         valores_reconst = []
@@ -77,11 +82,13 @@ def _get_ae_reconstruction(df_full: pd.DataFrame, df_b: pd.DataFrame, barrio: st
                 if i == 0:
                     for j in range(seq_len):
                         val_sc = reconstruction[j, idx_ratio]
-                        valores_reconst.append(val_sc * (max_val - min_val) + min_val)
+                        val_orig = robust_scaler.inverse_transform([[val_sc]])[0, 0]
+                        valores_reconst.append(val_orig)
                         fechas_reconst.append(fechas_data[i + j])
                 else:
                     val_sc = reconstruction[-1, idx_ratio]
-                    valores_reconst.append(val_sc * (max_val - min_val) + min_val)
+                    val_orig = robust_scaler.inverse_transform([[val_sc]])[0, 0]
+                    valores_reconst.append(val_orig)
                     fechas_reconst.append(fechas_data[i + seq_len - 1])
                     
         return pd.DataFrame({DatasetKeys.FECHA: fechas_reconst, "ae_reconstruction": valores_reconst})
@@ -100,6 +107,11 @@ def render_anomaly_panel(df: pd.DataFrame, barrio: str):
     if df_b.empty:
         st.info("No hay datos disponibles para este barrio en el periodo seleccionado.")
         return
+
+    # FIX: Filtrar por uso doméstico para que coincida con el backend
+    uso_col = DatasetKeys.USO
+    if uso_col in df_b.columns and "DOMESTICO" in df_b[uso_col].values:
+        df_b = df_b[df_b[uso_col] == "DOMESTICO"].copy()
 
     # --- FIX: Agrupación temporal estricta ---
     # Agrupamos por mes para sumar todos los tipos de USO (Doméstico, Comercial...)
