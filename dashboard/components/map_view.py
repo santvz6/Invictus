@@ -230,15 +230,15 @@ def _add_legend(m, feature_col: str, series: pd.Series):
         font-family: 'Inter', sans-serif; font-size: 12px;
         backdrop-filter: blur(6px); border: 1px solid rgba(255,255,255,0.12);
     ">
-        <b style="font-size:13px;">🌡 {feature_col}</b><br>
+        <b style="font-size:13px;">{feature_col}</b><br>
         <div style="display:flex; align-items:center; gap:6px; margin-top:6px;">
             <span style="font-size:10px;">{lo:.1f}</span>
             <div style="height:10px; width:90px; background:linear-gradient(to right,#1b4965,#52b788,#f4a261,#c1121f);
                         border-radius:3px;"></div>
             <span style="font-size:10px;">{hi:.1f}</span>
         </div>
-        <div style="margin-top:6px; font-size:10px; color:#c1121f;">● Alerta turística</div>
-        <div style="font-size:10px; color:#52b788;">● Sin alerta</div>
+        <div style="margin-top:6px; font-size:10px; color:#c1121f;">Alerta turística</div>
+        <div style="font-size:10px; color:#52b788;">Sin alerta</div>
     </div>
     """
     m.get_root().html.add_child(folium.Element(html))

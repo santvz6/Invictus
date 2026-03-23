@@ -101,7 +101,7 @@ def render_anomaly_panel(df: pd.DataFrame, barrio: str):
     barrios_limpios = df[DatasetKeys.BARRIO].str.split("-", n=1).str[-1].str.strip().str.upper()
     df_b = df[barrios_limpios == barrio].copy()
     
-    st.markdown(f"### 🔎 Análisis: {barrio}")
+    st.markdown(f"### Análisis: {barrio}")
     st.markdown("<hr style='margin: 0.5em 0; border-color: rgba(76,201,240,0.2);'/>", unsafe_allow_html=True)
     
     if df_b.empty:
@@ -161,7 +161,7 @@ def render_anomaly_panel(df: pd.DataFrame, barrio: str):
               delta="CRÍTICO" if alertas > 0 else "Normal", delta_color="inverse" if alertas > 0 else "normal")
 
     # 3. Gráfico Comparativo: Ratio Real vs Esperado
-    st.markdown("#### 📈 Ratio de Consumo Real vs. Esperado")
+    st.markdown("#### Ratio de Consumo Real vs. Esperado")
     
     fig = go.Figure()
 
@@ -243,7 +243,7 @@ def render_anomaly_panel(df: pd.DataFrame, barrio: str):
     st.plotly_chart(fig, width='stretch')
 
     # 4. Listado Tabular de Anomalías
-    st.markdown("#### 🚨 Registro de Anomalías")
+    st.markdown("#### Registro de Anomalías")
     if DatasetKeys.ALERTA_TURISTICA_ILEGAL in df_monthly.columns and alertas > 0:
         cols_to_show = [DatasetKeys.FECHA, "ratio_real", "ratio_esperado", DatasetKeys.AE_SCORE]
         cols_to_show = [c for c in cols_to_show if c in df_monthly.columns]
@@ -263,4 +263,4 @@ def render_anomaly_panel(df: pd.DataFrame, barrio: str):
         
         st.dataframe(df_table.style.format(precision=2), hide_index=True, width='stretch')
     else:
-        st.success("✅ Sin comportamiento anómalo detectado en este periodo.")
+        st.success("Sin comportamiento anómalo detectado en este periodo.")

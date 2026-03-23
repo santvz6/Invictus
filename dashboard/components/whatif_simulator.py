@@ -75,7 +75,7 @@ def render_whatif(df: pd.DataFrame, barrio: str | None = None):
     df : pd.DataFrame  — DataFrame completo para calcular rangos reales
     barrio : str | None — Si se pasa, muestra los valores reales como referencia
     """
-    st.markdown("### 🔬 Simulador What-if Avanzado (IA + Física)")
+    st.markdown("### Simulador What-if Avanzado (IA + Física)")
     st.markdown(
         "<small style='color:#888;'>Ajusta las variables para ver cómo cambia el consumo esperado "
         "y la respuesta de los modelos predictivos.</small>",
@@ -86,7 +86,7 @@ def render_whatif(df: pd.DataFrame, barrio: str | None = None):
     if not barrio:
         barrios_disponibles = df[DatasetKeys.BARRIO].unique()
         barrio = "PLAYA SAN JUAN" if "PLAYA SAN JUAN" in barrios_disponibles else barrios_disponibles[0]
-        st.info(f"👆 Selecciona un barrio en el mapa. Mostrando simulación para: **{barrio}**")
+        st.info(f"Selecciona un barrio en el mapa. Mostrando simulación para: **{barrio}**")
 
     # ─── Filtrar datos del barrio ───────────────────────────────────────
     barrios_limpios = df[DatasetKeys.BARRIO].str.split("-", n=1).str[-1].str.strip().str.upper()
@@ -136,47 +136,47 @@ def render_whatif(df: pd.DataFrame, barrio: str | None = None):
     def_hoteles= df_b[DatasetKeys.PLAZAS_HOTELES_BARRIO_GVA].mean() if DatasetKeys.PLAZAS_HOTELES_BARRIO_GVA in df_b.columns else np.mean(hoteles_range)
 
     # ─── Sliders ─────────────────────────────────────────────────────────
-    st.markdown("#### 🎛️ Modificación de Features")
+    st.markdown("#### Modificación de Features")
     st.caption("Los cambios aplicados se suman o restan uniformemente a la serie histórica de los últimos 12 meses.")
     col1, col2, col3 = st.columns(3)
 
     with col1:
         temp_val = st.slider(
-            "🌡 Temperatura Media (°C)",
+            "Temperatura Media (°C)",
             min_value=temp_range[0], max_value=temp_range[1],
             value=float(def_temp), step=0.5, key="wif_temp",
         )
         precip_val = st.slider(
-            "🌧 Precipitación (mm)",
+            "Precipitación (mm)",
             min_value=precip_range[0], max_value=precip_range[1],
             value=float(def_precip), step=1.0, key="wif_precip",
         )
         ndvi_val = st.slider(
-            "🌿 Índice Vegetación (NDVI)",
+            "Índice Vegetación (NDVI)",
             min_value=float(ndvi_range[0]), max_value=float(ndvi_range[1]),
             value=float(def_ndvi), step=0.05, key="wif_ndvi",
         )
 
     with col2:
         vt_val = st.slider(
-            "🏖 % VT Barrio Oficial",
+            "% VT Barrio Oficial",
             min_value=float(vt_range[0]), max_value=float(vt_range[1]),
             value=float(def_vt), step=0.5, key="wif_vt",
         )
         vt_sin_val = st.slider(
-            "🕵️ % VT Sin Registrar (Ilegales)",
+            "% VT Sin Registrar (Ilegales)",
             min_value=float(vt_sin_range[0]), max_value=float(vt_sin_range[1]),
             value=float(def_vt_sin), step=0.5, key="wif_vtsin",
         )
         hoteles_val = st.slider(
-            "🏨 Plazas Hoteleras",
+            "Plazas Hoteleras",
             min_value=float(hoteles_range[0]), max_value=float(hoteles_range[1]),
             value=float(def_hoteles), step=10.0, key="wif_hoteles",
         )
         
     with col3:
         ratio_val = st.slider(
-            "📊 Ratio Consumo Modificado",
+            "Ratio Consumo Modificado",
             min_value=ratio_range[0], max_value=ratio_range[1],
             value=float(def_ratio), step=0.1, key="wif_ratio",
         )
@@ -274,7 +274,7 @@ def render_whatif(df: pd.DataFrame, barrio: str | None = None):
 
     # ─── Métricas resultado ───────────────────────────────────────────────
     st.markdown("---")
-    st.markdown("#### 📊 Estimación Resultante (Último mes simulado)")
+    st.markdown("#### Estimación Resultante (Último mes simulado)")
 
     ratio_sim = df_sim[DatasetKeys.CONSUMO_RATIO].iloc[-1]
     ratio_orig = df_b[DatasetKeys.CONSUMO_RATIO].iloc[-1]
@@ -285,17 +285,17 @@ def render_whatif(df: pd.DataFrame, barrio: str | None = None):
     delta_fisico_pct = ((fisico_sim / fisico_orig) - 1) * 100 if fisico_orig > 0 else 0
 
     m1, m2, m3 = st.columns(3)
-    m1.metric("💧 Ratio Consumo Simulado", f"{ratio_sim:.2f}",
+    m1.metric("Ratio Consumo Simulado", f"{ratio_sim:.2f}",
               delta=f"{delta_ratio_pct:+.1f}% vs real")
-    m2.metric("🟢 Esperado Físico (IA-RF)", f"{fisico_sim:.2f}",
+    m2.metric("Esperado Físico (IA-RF)", f"{fisico_sim:.2f}",
               delta=f"{delta_fisico_pct:+.1f}% vs base",
               delta_color="inverse" if delta_fisico_pct > 10 else "normal")
-    m3.metric("🚨 Riesgo Anomalía (AE-IA)", f"{ae_score_sim:.0f}%",
+    m3.metric("Riesgo Anomalía (AE-IA)", f"{ae_score_sim:.0f}%",
               delta="CRÍTICO (Anomalía)" if ae_score_sim > 100 else "NORMAL",
               delta_color="inverse" if ae_score_sim > 100 else "off")
 
     # ─── Curva de simulación ──────────────────────────────────────────────
-    st.markdown("#### 📈 Evolución a 12 meses: Modelos Predictivos en Escenario")
+    st.markdown("#### Evolución a 12 meses: Modelos Predictivos en Escenario")
     
     # Abstracción a un escenario simulado base (Año 2024)
     fechas_str = []
@@ -340,7 +340,7 @@ def render_whatif(df: pd.DataFrame, barrio: str | None = None):
     st.plotly_chart(fig, width='stretch')
 
     # ─── Gráfico de Importancia (RF) ───────────────────────────────
-    with st.expander("🔍 Ver Importancia de Factores Físicos", expanded=False):
+    with st.expander("Ver Importancia de Factores Físicos", expanded=False):
         importances = rf_model.feature_importances_
         feat_names_friendly = {
             DatasetKeys.TEMP_MEDIA: "Temperatura Media",

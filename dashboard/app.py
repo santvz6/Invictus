@@ -111,7 +111,7 @@ hr { border-color: rgba(76,201,240,0.2) !important; }
 # ════════════════════════════════════════════════════════════════════════════
 # 2. CARGA DE DATOS (cacheada)
 # ════════════════════════════════════════════════════════════════════════════
-with st.spinner("⏳ Cargando datos del pipeline Water2Fraud..."):
+with st.spinner("Cargando datos del pipeline Water2Fraud..."):
     df_full = load_dataframe()
     gdf     = load_geodataframe()
 
@@ -158,12 +158,12 @@ with st.sidebar:
     if "temp_range" not in st.session_state:
         st.session_state.temp_range = (opciones_label[0], opciones_label[-1])
 
-    st.markdown("##### ⏱ Selección Rápida")
+    st.markdown("##### Selección Rápida")
     c_p1, c_p2 = st.columns(2)
-    if c_p1.button("📅 Último Año", width="stretch"):
+    if c_p1.button("Último Año", width="stretch"):
         st.session_state.temp_range = (opciones_label[-13] if len(opciones_label) >= 13 else opciones_label[0], opciones_label[-1])
         st.rerun()
-    if c_p2.button("📊 Todo", width="stretch"):
+    if c_p2.button("Todo", width="stretch"):
         st.session_state.temp_range = (opciones_label[0], opciones_label[-1])
         st.rerun()
 
@@ -180,11 +180,11 @@ with st.sidebar:
     fecha_fin    = mapeo_fechas[rango_sel[1]] + pd.offsets.MonthEnd(0)
 
 
-    st.markdown("#### 🏙 Filtro por Barrio")
+    st.markdown("#### Filtro por Barrio")
     barrios_lista = ["Todos los barrios"] + sorted(df_full[DatasetKeys.BARRIO].unique().tolist())
     barrio_filtro = st.selectbox("Barrio / Contrato", barrios_lista, key="sidebar_barrio")
 
-    st.markdown("#### 🌡 Feature del Mapa de Calor")
+    st.markdown("#### Feature del Mapa de Calor")
     feature_label = st.radio(
         "Variable a visualizar:",
         list(FEATURES_DISPONIBLES.keys()),
@@ -193,7 +193,7 @@ with st.sidebar:
     )
     feature_col = FEATURES_DISPONIBLES[feature_label]
 
-    st.markdown("#### 🚽 Filtro por Uso")
+    st.markdown("#### Filtro por Uso")
     usos_disponibles = ["Todos los usos"] + sorted(df_full[DatasetKeys.USO].unique().tolist())
     # Recomendamos DOMESTICO para que coincida con la IA
     uso_filtro = st.selectbox("Tipo de uso", usos_disponibles, 
@@ -206,7 +206,7 @@ with st.sidebar:
         st.markdown(
             f"""<div style="background:rgba(76,201,240,0.1); border:1px solid #4cc9f0;
             border-radius:8px; padding:10px; text-align:center; font-size:13px;">
-            📍 <b>Barrio activo:</b><br>
+            <b>Barrio activo:</b><br>
             <span style="color:#4cc9f0; font-size:15px;">{st.session_state.barrio_seleccionado}</span>
             </div>""",
             unsafe_allow_html=True,
@@ -247,10 +247,10 @@ total_consumo   = df_filtered[DatasetKeys.CONSUMO].sum() if DatasetKeys.CONSUMO 
 num_barrios     = df_filtered[DatasetKeys.BARRIO].nunique()
 
 k1, k2, k3, k4 = st.columns(4)
-k1.metric("🏘 Barrios analizados",    num_barrios)
-k2.metric("📋 Contratos procesados",  f"{total_contratos:,}")
-k3.metric("💧 Consumo total (m³)",    f"{total_consumo:,.0f}")
-k4.metric("🚨 Alertas activas",       total_alertas,
+k1.metric("Barrios analizados",    num_barrios)
+k2.metric("Contratos procesados",  f"{total_contratos:,}")
+k3.metric("Consumo total (m³)",    f"{total_consumo:,.0f}")
+k4.metric("Alertas activas",       total_alertas,
           delta="⚠️" if total_alertas > 10 else None,
           delta_color="inverse" if total_alertas > 10 else "off")
 
@@ -261,9 +261,9 @@ st.markdown("---")
 # 7. TABS PRINCIPALES
 # ════════════════════════════════════════════════════════════════════════════
 tab_mapa, tab_whatif, tab_informe = st.tabs([
-    "🗺 Mapa de Calor Interactivo",
-    "🔬 Simulador What-if",
-    "🤖 Informe LLM",
+    "Mapa de Calor Interactivo",
+    "Simulador What-if",
+    "Informe LLM",
 ])
 
 
@@ -272,9 +272,9 @@ with tab_mapa:
     col_mapa, col_panel = st.columns([4, 1.4], gap="medium")
 
     with col_mapa:
-        st.markdown(f"#### 🌡 Mapa de Calor — *{feature_label}*")
+        st.markdown(f"#### Mapa de Calor — *{feature_label}*")
         st.caption(
-            f"Periodo: **{fecha_inicio}** → **{fecha_fin}** · "
+            f"Periodo: **{fecha_inicio.strftime('%m-%Y')}** → **{fecha_fin.strftime('%m-%Y')}** · "
             f"{'Todos los barrios' if barrio_filtro == 'Todos los barrios' else barrio_filtro}"
         )
         map_output = render_map(df_barrio_agg, feature_col, gdf)
@@ -305,7 +305,6 @@ with tab_mapa:
                 border-radius: 12px; color: #668;
             ">
                 <div>
-                    <div style="font-size: 40px; margin-bottom: 12px;">📍</div>
                     <div style="font-size: 14px; color: #aaa;">
                         Haz clic en un barrio<br>del mapa para ver<br>el panel de anomalías
                     </div>

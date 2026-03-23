@@ -14,38 +14,21 @@ from src.config import DatasetKeys
 
 # Informe de ejemplo hardcodeado por barrio (mock)
 _INFORMES_MOCK = {
-    "PLAYA SAN JUAN": """
-**Análisis del Barrio: PLAYA SAN JUAN**
-
-📌 **Resumen Ejecutivo:**
-El barrio de Playa San Juan presenta una concentración anómala de consumo hídrico durante los meses de verano (junio–agosto), con picos que superan en un **187%** el consumo esperado según el modelo físico.
-
-🔴 **Anomalías Detectadas:**
-- **3 contratos** registran consumos superiores a 1.5× el umbral físico de manera consistente durante 6+ meses.
-- El error de reconstrucción medio del LSTM-AE es de **0.312**, significativamente superior al umbral del cluster (0.18).
-
-🏖 **Indicadores Turísticos:**
-- El porcentaje de Viviendas Turísticas registradas (**38.2%**) no justifica por sí solo el volumen detectado.
-- Se estima un GAP de **127 unidades** entre el registro GVA y la demanda hídrica real, sugiriendo actividad no declarada.
-
-💡 **Recomendación:**
-Cruzar los contratos de agua de alto consumo con el padrón municipal y el registro catastral. Priorizar inspección en las calles de mayor densidad de plataformas de alquiler vacacional.
-""",
     "DEFAULT": """
 **Análisis de Barrio**
 
-📌 **Resumen Ejecutivo:**
+**Resumen Ejecutivo:**
 El modelo LSTM-Autoencoder ha procesado las secuencias temporales de consumo de agua de este barrio y ha identificado patrones de comportamiento relevantes.
 
-🔴 **Anomalías Detectadas:**
+**Anomalías Detectadas:**
 El error de reconstrucción promedio se sitúa dentro de los rangos normales para este clúster de comportamiento. No se han identificado violaciones graves de las restricciones físicas.
 
-🏖 **Indicadores Turísticos:**
+**Indicadores Turísticos:**
 Los datos de Viviendas Turísticas registradas (GVA) están en línea con el consumo hídrico observado. No se detecta un GAP significativo respecto a las estimaciones INE.
 
-💡 **Recomendación:**
+**Recomendación:**
 Continuar el seguimiento temporal. El modelo recomienda revisión periódica en los meses de mayor demanda estacional.
-""",
+"""
 }
 
 
@@ -126,7 +109,7 @@ def render_llm_report(barrio: str | None = None, df: pd.DataFrame = None):
     barrio : str | None — Barrio seleccionado en el mapa
     df : pd.DataFrame | None — Datos filtrados para generar contexto
     """
-    st.markdown("### 🤖 Informe de Hallazgos IA")
+    st.markdown("### Informe de Hallazgos IA")
     st.markdown(
         "<small style='color:#888;'>El sistema enviará el contexto del barrio a un LLM "
         "y mostrará un informe narrativo de las causas de anomalía.</small>",
@@ -135,14 +118,14 @@ def render_llm_report(barrio: str | None = None, df: pd.DataFrame = None):
     st.markdown("---")
 
     if not barrio:
-        st.info("👆 Selecciona un barrio en el mapa para generar el informe.")
+        st.info("Selecciona un barrio en el mapa para generar el informe.")
         return
 
     # Generamos el prompt de manera dinámica basado en los datos reales actuales del dashboard
     prompt_text = _build_dynamic_prompt(barrio, df)
 
     # Contexto que se enviaría al LLM (visible para el usuario)
-    with st.expander("📋 Contexto enviado al LLM (debug)", expanded=False):
+    with st.expander("Contexto enviado al LLM (debug)", expanded=False):
         st.code(prompt_text, language="markdown")
 
     # ── Botón de generación ─────────────────────────────────────────────
