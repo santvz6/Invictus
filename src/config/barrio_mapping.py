@@ -1,35 +1,42 @@
 """
-Mapeo ponderado de Barrios AMAEM → Municipios INE.
+Mapeo ponderado de Municipios INE a Barrios AMAEM (Alicante).
 
-Estructura: {barrio: [(codigo_ine, peso), ...]}
-  - codigo_ine: string con el código del municipio (sin nombre), ej. '03014'
-  - peso: float en [0.0, 1.0] que indica qué fracción del barrio pertenece a ese municipio.
-  - Los pesos de un barrio suman <= 1.0 (la fracción restante se considera sin cobertura/NaN).
-
+Este archivo gestiona la distribución de métricas estadísticas (viviendas turísticas,
+población, etc.) desde los municipios del INE hacia los barrios de suministro.
+Estructura: {nombre_barrio: [(codigo_ine, peso), ...]}
+  - codigo_ine: Identificador del municipio del que se extraen los datos (ej. '03014').
+  - peso: Proporción de las métricas del municipio que se asignan al barrio (0.0 a 1.0).
+  - Nota: Permite calcular estimaciones de viviendas turísticas o features del INE por barrio.
 """
+
 
 import os
 import sys
 import yaml
 import pandas as pd
 
+# Ajuste de ruta para permitir importaciones desde la raíz del proyecto
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "../..")))
 from src.config import Paths
 
 
-BARRIO_MUNICIPIO_WEIGHTS: dict[str, list[tuple[str, float]]] = { ... }
-
 def export_yaml_to_csv():
+    """
+    Convierte la configuración de mapeo de formato YAML a CSV.
+    Útil para integraciones con herramientas externas o inspección rápida de datos.
+    """
     yaml_path = Paths.MAPPING_BARRIOS_YAML
     csv_path = Paths.MAPPING_BARRIOS
 
     if not os.path.exists(yaml_path):
-        print(f"No existe el archivo YAML en {yaml_path}")
+        print(f"Error: El archivo fuente YAML no se encuentra en {yaml_path}")
         return
 
+    # Carga de datos estructurados desde YAML
     with open(yaml_path, "r", encoding="utf-8") as f:
         data = yaml.safe_load(f)
 
+    # Aplanamiento de la estructura para formato tabular
     rows = []
     for barrio, asignaciones in data.items():
         for item in asignaciones:
@@ -40,8 +47,10 @@ def export_yaml_to_csv():
                 "peso": peso
             })
            
+    # Generación y guardado del DataFrame resultante
     df_map = pd.DataFrame(rows)
     df_map.to_csv(csv_path, index=False, sep=";")
+    print(f"Mapeo exportado correctamente a: {csv_path}")
 
 if __name__ == "__main__":
     export_yaml_to_csv()

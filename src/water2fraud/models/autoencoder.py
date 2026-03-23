@@ -16,9 +16,9 @@ class LSTMAutoencoder(nn.Module):
 
         Args:
             num_features (int): Número de variables (características) por cada paso temporal.
-            hidden_dim (int, optional): Dimensión de la primera capa oculta LSTM. Por defecto es 64.
-            latent_dim (int, optional): Dimensión del espacio latente (cuello de botella). Por defecto es 16.
-            seq_len (int, optional): Longitud de la secuencia temporal (ej. 12 meses). Por defecto es 12.
+            hidden_dim (int): Dimensión de la primera capa oculta LSTM.
+            latent_dim (int): Dimensión del espacio latente (cuello de botella).
+            seq_len (int): Longitud de la secuencia temporal (ej. 12 meses).
         """
         super(LSTMAutoencoder, self).__init__()
         self.seq_len = seq_len

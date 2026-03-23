@@ -12,7 +12,7 @@ from src.config import DatasetKeys, AIConstants
 class EarlyStopping:
     """
     Detiene el entrenamiento si la métrica de pérdida no mejora tras un número de épocas.
-        """
+    """
     def __init__(self, patience=10, min_delta=0.0):
         """
         Args:
@@ -99,25 +99,20 @@ def train_autoencoder(model: nn.Module, dataloader: DataLoader, epochs=100, lr=1
 def detect_ae_anomalies(model: nn.Module, X_sequences: np.ndarray, metadata_df: pd.DataFrame, 
                      feature_names=None, device="cpu") -> tuple[pd.DataFrame, float]:
     """
-    Evalúa secuencias mediante el Autoencoder para detectar anomalías.
-    
-    Calcula el error de reconstrucción de cada serie. Si el error supera un umbral
-    estadístico (percentil 95) Y el consumo real supera el consumo teórico dictado por
-    las fórmulas físicas, marca la muestra como un fraude o vivienda turística ilegal.
+    Detecta anomalías en las secuencias de entrada utilizando un modelo Autoencoder entrenado.
+
+    Calcula el error de reconstrucción (MAE) para cada secuencia y lo integra con los metadatos
+    proporcionados para identificar comportamientos inusuales.
 
     Args:
-        model (nn.Module): Autoencoder LSTM previamente entrenado.
-        X_sequences (np.ndarray): Secuencias a evaluar con forma (N, seq_len, num_features).
-        metadata_df (pd.DataFrame): Metadatos asociados a las secuencias (Barrio, Fecha, consumos).
-        feature_names (list[str], optional): Nombres de las variables en el orden de X_sequences.
-                                             Si se omite, se usará 'feature_0', 'feature_1', etc.
-        physics_threshold (float, optional): Multiplicador del límite físico de consumo teórico. 
-                                             Por defecto es 1.5.
-        device (str, optional): Dispositivo de cómputo ('cpu' o 'cuda'). Por defecto es 'cpu'.
+        model: Modelo Autoencoder de PyTorch.
+        X_sequences: Array de NumPy con las secuencias de entrada (N, seq_len, features).
+        metadata_df: DataFrame con metadatos asociados a cada secuencia (ej. IDs, fechas).
+        feature_names: Lista opcional con los nombres de las características.
+        device: Dispositivo para realizar la inferencia ('cpu' o 'cuda').
 
     Returns:
-        pd.DataFrame: DataFrame con los metadatos originales extendidos con los errores de
-                      reconstrucción, flags de anomalías y la alerta final.
+        tuple: (DataFrame con errores por secuencia y metadatos, umbral de anomalía sugerido).
     """
     model.eval()
     model.to(device)
@@ -127,7 +122,7 @@ def detect_ae_anomalies(model: nn.Module, X_sequences: np.ndarray, metadata_df: 
     with torch.no_grad():
         reconstructions = model(X_tensor)
         
-    # 1. ERROR GLOBAL (El que ya tenías)
+    # 1. ERROR GLOBAL
     # Calculamos el MAE (Mean Absolute Error) promediando la secuencia (dim=1) y las features (dim=2)
     global_errors = torch.mean(torch.abs(reconstructions - X_tensor), dim=[1, 2]).cpu().numpy()
     metadata_df[DatasetKeys.RECONSTRUCTION_ERROR] = global_errors
@@ -137,10 +132,6 @@ def detect_ae_anomalies(model: nn.Module, X_sequences: np.ndarray, metadata_df: 
     feature_errors = torch.mean(torch.abs(reconstructions - X_tensor), dim=1).cpu().numpy()
     signed_feature_errors = torch.mean(X_tensor - reconstructions, dim=1).cpu().numpy()
     
-    # Nombres por defecto si no se los pasas
-    if feature_names is None:
-        feature_names = [f"feature_{i}" for i in range(feature_errors.shape[1])]
-            
     # Añadimos una columna al DataFrame por cada feature
     for i, name in enumerate(feature_names):
         metadata_df[f'error__{name}'] = feature_errors[:, i]
@@ -170,6 +161,7 @@ def plot_training_history(history: dict, title="Historial de Entrenamiento del A
     plt.legend()
     plt.tight_layout()
     plt.show()
+
 
 def plot_reconstruction(model: nn.Module, sequence: np.ndarray, feature_idx=0, 
                         feature_name="Consumo", device="cpu"):

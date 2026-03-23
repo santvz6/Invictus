@@ -1,41 +1,43 @@
 class DatasetKeys:
-    # --- Columnas originales ---
+    """
+    Diccionario centralizado de nombres de columnas (keys) utilizadas en los DataFrames.
+    Evita el uso de strings literales dispersos por el código, facilitando cambios en el esquema.
+    """
+    
+    # --- Columnas procedentes de los datos originales (AMAEM) ---
     BARRIO          = "barrio"
     FECHA           = "fecha"
     CONSUMO         = "consumo"
     NUM_CONTRATOS   = "num_contratos"
     USO             = "uso"
 
-    # --- OneHot Encoding ---    
-    #USO_COMERCIAL = USO + "_COMERCIAL"
-    #USO_DOMESTICO = USO + "_DOMESTICO"
-    #USO_NO_DOMESTICO = USO + "_NO DOMESTICO"
-
-    # --- Columnas calculadas (Features) ---
+    # --- Variables de Ingeniería de Características (Features) ---
     CONSUMO_RATIO = "consumo_ratio"
     
+    # Componentes temporales cíclicas
     MES = "mes"
     MES_SIN = "mes_sin"
     MES_COS = "mes_cos"
 
-    # --- Columnas Externas (Físicos) ---
+    # --- Modelado Físico y Análisis de Residuos ---
     CONSUMO_FISICO_ESPERADO = "consumo_teorico_fisica"
     PREDICCION_FOURIER      = "prediccion_fourier"
     IMPACTO_EXOGENO         = "impacto_exogeno"
     RESIDUO                 = "residuo"
     NDVI_SATELITE           = "ndvi_satelite"
     
-    # --- Columnas Externas (INE Turismo) ---
+    # --- Datos de Turismo y Vivienda (INE) ---
     NUM_VT_BARRIO_INE       = "num_vt_barrio"
     PCT_VT_BARRIO_INE       = "porcentaje_vt_barrio %"
     OCUP_VT_PROV_INE        = "ocupaciones_vt_prov"
     PERNOCT_VT_PROV_INE     = "pernoctaciones_vt_prov"
 
-    # --- Columnas Externas (AEMET) ---
+
+    # --- Factores Meteorológicos (AEMET) ---
     TEMP_MEDIA              = "temperatura_media"
     PRECIPITACION           = "precipitacion"
 
-    # --- Columnas Externas (GVA) ---
+    # --- Datos de Turismo y Vivienda (GVA) ---
     NUM_VT_BARRIO_GVA       = "num_viviendas_barrio_gva"
     NUM_HOTELES_BARRIO_GVA  = "num_hoteles_barrio_gva"
     NUM_VT_SIN_REGISTRAR    = "num_vt_sin_registrar"
@@ -44,20 +46,21 @@ class DatasetKeys:
     PLAZAS_VIVIENDAS_GVA      = "plazas_viviendas_barrio_gva"
     PLAZAS_HOTELES_BARRIO_GVA = "plazas_hoteles_barrio_gva"
 
-    # --- Columnas de Resultados (Modelos y Pipeline) ---
+    # --- Identificadores resultantes de Modelos de ML y Pipelines ---
     CLUSTER                 = "cluster"
     RECONSTRUCTION_ERROR    = "reconstruction_error"
     
+    # Métricas de detección de anomalías
     RESIDUO_POSITIVO        = "residuo_positivo"
     FRAUD_RISK_SCORE        = "FRAUD_RISK_SCORE"
     ALERTA_TURISTICA_ILEGAL = "ALERTA_TURISTICA_ILEGAL"
     
-    
+    # Flags Booleanos de Anomalía
     IS_AE_ANOMALY           = "is_ae_anomaly"
     IS_PHYSICS_ANOMALY      = "is_physics_anomaly"
-    AE_SCORE                = "ae_score"        # 100 = Umbral Anomalía
-    PHYSICS_SCORE           = "physics_score"   # 100 = Umbral Anomalía
+    AE_SCORE                = "ae_score"        # Escala 0-100 (100 = Umbral de Alerta)
+    PHYSICS_SCORE           = "physics_score"   # Escala 0-100 (100 = Umbral de Alerta)
     
-    # --- Columnas de Reporte ---
+    # --- Campos para generación de Reportes Finales ---
     NIVEL_RIESGO            = "nivel_riesgo"
     MOTIVO                  = "motivo"

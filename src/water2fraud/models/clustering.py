@@ -63,7 +63,7 @@ class ClusterManager:
         joblib.dump(self.model, path)
 
     @staticmethod
-    def find_optimal_clusters(X_sequences: np.ndarray, max_clusters=10, feature_idx=0):
+    def find_optimal_clusters(X_sequences: np.ndarray, max_clusters=10, feature_idx=0) -> int:
         """
         Ejecuta el Método del Codo (Elbow Method) para determinar matemáticamente 
         el número óptimo de clústeres sin necesidad de gráficas.
@@ -98,7 +98,8 @@ class ClusterManager:
         return mejor_k
         
     @staticmethod
-    def plot_cluster_samples(X_sequences: np.ndarray, labels: np.ndarray, image_path: Path, feature_idx=0, fig_size=(16, 12)):
+    def plot_cluster_samples(X_sequences: np.ndarray, labels: np.ndarray, 
+                            image_path: Path, feature_idx=0, fig_size=(16, 12)) -> None:
         """
         Visualización óptima en dos paneles:
         1. Arriba: Perfil de consumo PROMEDIO (Centroide) del clúster con su desviación.
@@ -162,10 +163,7 @@ class ClusterManager:
         
         # ---------------------------------------------------------
         # PANEL 2 (ABAJO): Distribución completa (Boxplot)
-        # ---------------------------------------------------------
-        # Truco visual: Ponemos la escala Y en logarítmica si los outliers aplastan las cajas
-        # NOTA: Comenta ax2.set_yscale('symlog') si prefieres la vista lineal anterior
-        
+        # ---------------------------------------------------------¡    
         sns.boxplot(
             data=df_plot,
             x="Mes",
