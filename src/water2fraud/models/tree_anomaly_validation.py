@@ -82,7 +82,7 @@ class TreeModelValidator:
 
 
     @staticmethod
-    def plot_tree_importance(tree_model, feature_names):
+    def plot_tree_importance(tree_model, feature_names, output_path):
         # 1. Calculamos la importancia agrupada en una sola línea (Vectorizado)
         importancias = tree_model.feature_importances_
         # Sumamos cada n variables (asumiendo que feature_names tiene el tamaño original, ej. 7)
@@ -101,4 +101,5 @@ class TreeModelValidator:
         plt.xlabel("Importancia Acumulada")
         plt.ylabel("")
         plt.tight_layout()
+        plt.savefig(output_path / f"{tree_model.__class__.__name__}_importances.png")
         plt.show()

@@ -257,9 +257,6 @@ class WaterApp:
         # Aplicamos la restricción física de "Direccionalidad"
         df_final.loc[df_final[ae_consumo_col] <= 0, DatasetKeys.AE_SCORE] = 0
         
-        # Penalizamos directamente si NO es anomalía del AE
-        df_final.loc[df_final[DatasetKeys.IS_AE_ANOMALY] == False, DatasetKeys.AE_SCORE] *= 0.5
-
         df_final[DatasetKeys.RESIDUO_POSITIVO] = df_final[DatasetKeys.RESIDUO].clip(lower=0)
         df_final[DatasetKeys.PHYSICS_SCORE] = scaler.fit_transform(df_final[[DatasetKeys.RESIDUO_POSITIVO]])
 
@@ -270,7 +267,7 @@ class WaterApp:
         )
 
         # 5. Definimos la Alerta
-        umbral_rojo = np.percentile(df_final[DatasetKeys.FRAUD_RISK_SCORE], AIConstants.PHYSICS_ANOMALIES_PERCENTILE)
+        umbral_rojo = np.percentile(df_final[DatasetKeys.FRAUD_RISK_SCORE], AIConstants.FRAUD_RISK_PERCENTILE)
         df_final[DatasetKeys.ALERTA_TURISTICA_ILEGAL] = df_final[DatasetKeys.FRAUD_RISK_SCORE] > umbral_rojo
 
         # 6. Clasificamos Nivel de Riesgo

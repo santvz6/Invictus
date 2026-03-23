@@ -1,36 +1,53 @@
-import numpy as np
-import pandas as pd
+"""
+Módulo Orquestador de Preprocesamiento y Preparación de Tensores.
 
-from src.water2fraud.features.amaem_processor import AMAEMProcessor
+Este componente actúa como el cerebro de la etapa de features, coordinando la 
+limpieza secuencial de múltiples fuentes (AMAEM, INE, GVA, AEMET, Sentinel) y 
+transformando los datos tabulares en secuencias temporales 3D aptas para modelos 
+de Deep Learning (LSTM Autoencoders).
+"""
+
+import pandas as pd
+import numpy as np
+
 from src.water2fraud.features.ine_tourism_processor import INETourismProcessor
-from src.water2fraud.features.aemet_processor import AEMETProcessor
-from src.water2fraud.features.fisicos_processor import FisicosProcessor
 from src.water2fraud.features.sentinel_processor import SentinelProcessor
+from src.water2fraud.features.fisicos_processor import FisicosProcessor
+from src.water2fraud.features.aemet_processor import AEMETProcessor
+from src.water2fraud.features.amaem_processor import AMAEMProcessor
 from src.water2fraud.features.gva_processor import GVAProcessor
 from src.config import get_logger, DatasetKeys, Paths
+
+# Logger central del pipeline de características
 logger = get_logger(__name__)
 
 
 class WaterPreprocessor:
     """
-    Módulo encargado de la limpieza, transformación y estructuración de los datos
-    crudos de agua hacia un formato ingerible por las redes neuronales temporales.
+    Orquestador global de transformación de datos para detección de fraude.
+    
+    Centraliza la configuración de variables predictoras, su normalización estocástica 
+    y la generación de ventanas deslizantes (sliding windows) para el aprendizaje temporal.
     """
+    
+    # Constantes de tipado de escalado
     MIN_MAX = "min-max"
+    ROBUST  = "robust"
     SIN_COS = "sin-cos"
 
-    # Seleccionamos las features que irán a la red neuronal
+    # Diccionario maestro de características predictoras (Features)
+    # Define cómo debe ser tratada cada variable antes de entrar en la red neuronal.
     FEATURES = {
         # AMAEM
-        DatasetKeys.CONSUMO_RATIO: MIN_MAX,
+        DatasetKeys.CONSUMO_RATIO: ROBUST,
         DatasetKeys.MES_SIN: SIN_COS,    
         DatasetKeys.MES_COS: SIN_COS,
 
         # INE - TOURISM
-        DatasetKeys.NUM_VT_BARRIO_INE: MIN_MAX,     
+        # DatasetKeys.NUM_VT_BARRIO_INE: MIN_MAX,           # Eliminado por redundancia con el %
         DatasetKeys.PCT_VT_BARRIO_INE: MIN_MAX,
-        DatasetKeys.OCUP_VT_PROV_INE: MIN_MAX,    
-        DatasetKeys.PERNOCT_VT_PROV_INE: MIN_MAX,   
+        # DatasetKeys.OCUP_VT_PROV_INE: MIN_MAX,            # Eliminado (información por Provincias)
+        # DatasetKeys.PERNOCT_VT_PROV_INE: MIN_MAX,         # Eliminado (información por Provincias)
 
         # AEMET
         DatasetKeys.TEMP_MEDIA: MIN_MAX, 
@@ -40,69 +57,55 @@ class WaterPreprocessor:
         DatasetKeys.NDVI_SATELITE: MIN_MAX,
         
         # GVA
-        DatasetKeys.NUM_VT_BARRIO_GVA: MIN_MAX,
-        DatasetKeys.PLAZAS_VIVIENDAS_GVA: MIN_MAX,
-        DatasetKeys.NUM_HOTELES_BARRIO_GVA: MIN_MAX,
+        # DatasetKeys.NUM_VT_BARRIO_GVA: MIN_MAX,           # Eliminado por redundancia con el %
+        # DatasetKeys.PLAZAS_VIVIENDAS_GVA: MIN_MAX,        # Eliminado por redundancia con el %
+        # DatasetKeys.NUM_HOTELES_BARRIO_GVA: MIN_MAX,      # Optamos por utilizar Plazas Hoteles
         DatasetKeys.PLAZAS_HOTELES_BARRIO_GVA: MIN_MAX,
         
         # FESTIVOS
         
 
         # ENGINEERED FEATURES
-        DatasetKeys.NUM_VT_ILEGALES: MIN_MAX,
-        DatasetKeys.PCT_VT_ILEGALES: MIN_MAX
+        # DatasetKeys.NUM_VT_SIN_REGISTRAR: MIN_MAX,        # Eliminado por redundancia con el %
+        DatasetKeys.PCT_VT_SIN_REGISTRAR: ROBUST
     }
+
     @staticmethod
-    def create_sequences(df: pd.DataFrame, sequence_length=12) -> tuple[np.ndarray, pd.DataFrame]:
+    def create_sequences(df: pd.DataFrame, sequence_length=12) -> tuple[np.ndarray, pd.DataFrame, list[str]]:
         """
-        Convierte el DataFrame tabular en secuencias temporales 3D (ventanas deslizantes)
-        para alimentar el LSTM-AE.
+        Transforma datos tabulares en tensores 3D para redes recurrentes.
         
-        Agrupa los datos por barrio y extrae ventanas cronológicas, reteniendo las
-        variables predictoras y generando un registro paralelo de metadatos.
+        Aplica un enfoque de ventana deslizante por cada segmento (Barrio, Uso), 
+        asegurando que el modelo aprenda patrones secuenciales de consumo.
 
         Args:
-            df (pd.DataFrame): DataFrame preprocesado y cronológicamente ordenado.
-            sequence_length (int, optional): Tamaño de la ventana de meses a generar. Por defecto es 12.
+            df (pd.DataFrame): DataFrame completamente preprocesado.
+            sequence_length (int): Longitud de la memoria temporal (meses).
 
         Returns:
-            tuple:
-                - X (np.ndarray): Tensor 3D de secuencias de forma (num_muestras, seq_length, num_features).
-                - meta_df (pd.DataFrame): Metadatos correspondientes al último mes de cada secuencia extraída.
-                
-        Raises:
-            ValueError: Si alguna columna requerida (One-Hot Encoding) no se encuentra en el DataFrame.
+            tuple: (X (tensor 3D), meta_df (referencias de barrio/fecha), feature_cols (nombres)).
         """
         logger.info(f"Generando secuencias temporales de tamaño {sequence_length} meses...")
         
-        # Ordenamos cronológicamente
+        # Ordenación rigurosa necesaria para la coherencia de la ventana temporal
         df = df.sort_values(by=[DatasetKeys.BARRIO, DatasetKeys.USO, DatasetKeys.FECHA])        
         
-        # Asegurar que solo usamos características que existan realmente en el DataFrame
-        # (protege el código si algún archivo externo como Sentinel no se encontró)
+        # Selección dinámica de columnas presentes en el dataset
         feature_cols = [col for col in WaterPreprocessor.FEATURES if col in df.columns]
 
-        # Asegurar que existan las columnas OHE, si no, rellenar con 0
-        #ohe_cols = [DatasetKeys.USO_DOMESTICO, DatasetKeys.USO_COMERCIAL, DatasetKeys.USO_NO_DOMESTICO]
-        #for col in ohe_cols:
-        #    if col not in df.columns:
-        #        raise ValueError(f"No se ha aplicado One Hot Encoding | Columnas df: {df.columns}")
-        #
-        #feature_cols.extend(ohe_cols)
-
         sequences = []
-        metadata = [] # Guardaremos a quién pertenece cada secuencia para identificar anomalías luego
+        metadata = [] 
         
-        # Agrupamos por Barrio y por tipo de USO
-        # Queremos una serie por cada par (Barrio, Uso)
+        # Iteración por clústers geográficos y de uso para evitar solapamientos entre barrios
         for (barrio, uso), group in df.groupby([DatasetKeys.BARRIO, DatasetKeys.USO]):
             group_data = group[feature_cols].values
             
-            # Ventana deslizante
+            # Construcción de ventanas deslizantes
             for i in range(len(group_data) - sequence_length + 1):
                 seq = group_data[i : i + sequence_length]
                 sequences.append(seq)
-                # Guardamos info de la última fecha de la secuencia
+                
+                # Anclaje de metadatos al último mes de la ventana (momento de la predicción)
                 last_row = group.iloc[i + sequence_length - 1]
                 metadata.append({
                     DatasetKeys.BARRIO: last_row[DatasetKeys.BARRIO],
@@ -110,35 +113,46 @@ class WaterPreprocessor:
                     DatasetKeys.FECHA: last_row[DatasetKeys.FECHA]
                 })
                 
-        X = np.array(sequences) # Forma: (num_muestras, seq_length, num_features)
+        X = np.array(sequences) 
         meta_df = pd.DataFrame(metadata)
         
         logger.info(f"Generadas {X.shape[0]} secuencias de forma {X.shape[1]}x{X.shape[2]}")
         return X, meta_df, feature_cols
-    
 
-    ########################################### DATAFRAME PROCESSING
     @staticmethod
     def _scale_features(df: pd.DataFrame) -> pd.DataFrame:
-        from sklearn.preprocessing import MinMaxScaler
         """
-        Escala las variables numéricas continuas al rango [0, 1] para evitar 
-        la saturación de gradientes en la red neuronal LSTM.
+        Normaliza las magnitudes de las variables para optimizar el aprendizaje profundo.
+        
+        Utiliza MinMaxScaler para comprimir variables continuas y transformaciones 
+        cíclicas (sin/cos) para variables periódicas como el mes.
         """
+        from sklearn.preprocessing import MinMaxScaler, RobustScaler
         df = df.copy()
-        scaler = MinMaxScaler()
+
+        # Identificación de columnas para escalado lineal
+        cols_to_robust = [
+            col for col, scale_type in WaterPreprocessor.FEATURES.items() 
+            if scale_type == WaterPreprocessor.ROBUST and col in df.columns
+        ]
+        
+        if cols_to_robust:
+            robust_scaler = RobustScaler()
+            df[cols_to_robust] = robust_scaler.fit_transform(df[cols_to_robust])
 
         cols_to_minmax = [
             col for col, scale_type in WaterPreprocessor.FEATURES.items() 
             if scale_type == WaterPreprocessor.MIN_MAX and col in df.columns
         ]
+        
         if cols_to_minmax:
             scaler = MinMaxScaler()
-            # ! A pesar de que hay 'Data Leakage'
-            # ! Hay que recordar que estamos entrenando un Autoencoder
+            # Nota técnica: Se asume un ligero 'Data Leakage' controlado al ajustar sobre 
+            # todo el histórico del Autoencoder para garantizar una reconstrucción estable.
             df[cols_to_minmax] = scaler.fit_transform(df[cols_to_minmax])
         
-        # Escalado del mes (SIN-COS)
+        # Codificación cíclica del tiempo (Meses)
+        # Permite que la red entienda que diciembre (12) está cerca de enero (1)
         meses = df[DatasetKeys.MES]
         df[DatasetKeys.MES_SIN] = (np.sin(2 * np.pi * meses / 12) + 1) / 2
         df[DatasetKeys.MES_COS] = (np.cos(2 * np.pi * meses / 12) + 1) / 2
@@ -148,27 +162,28 @@ class WaterPreprocessor:
     @staticmethod
     def _engineer_features(df: pd.DataFrame) -> pd.DataFrame:
         """
-        Calcula características derivadas complejas cruzando múltiples fuentes.
-        Reparte el total de la provincia registrado en la GVA hacia los barrios
-        usando las ponderaciones del INE y estima el gap de viviendas ilegales.
+        Ejecuta lógica de ingeniería de características complejas basada en el 'Gap' de legalidad.
+        
+        Calcula la discrepancia entre el turismo reportado (INE) y el registrado (GVA), 
+        distribuyendo pesos municipales hacia el detalle de barrio.
         """
         logger.info("Calculando variables derivadas (Reparto ponderado GVA e Ilegalidad)...")
         df = df.copy()
 
-        # 1. Obtenemos una fila única por Barrio y Fecha para no duplicar sumas al iterar por Usos
+        # Deduplicación para cálculo de cuotas geográficas puras
         df_unique = df.drop_duplicates(subset=[DatasetKeys.FECHA, DatasetKeys.BARRIO]).copy()
         
-        # 2. Calculamos el total de VT del INE por mes para toda la ciudad
+        # 1. Totalización de la huella turística de la ciudad por mes (según INE)
         total_ine_mes = df_unique.groupby(DatasetKeys.FECHA)[DatasetKeys.NUM_VT_BARRIO_INE].transform('sum')
         
-        # 3. Calculamos la cuota (porcentaje) que le corresponde a cada barrio
+        # 2. Determinación del peso específico de cada barrio en la carga turística total
         df_unique['pct_barrio'] = df_unique[DatasetKeys.NUM_VT_BARRIO_INE] / total_ine_mes.replace(0, 1)
         
-        # 4. Traemos el porcentaje de vuelta al dataframe principal
+        # 3. Propagación de pesos al dataset principal
         df = pd.merge(df, df_unique[[DatasetKeys.FECHA, DatasetKeys.BARRIO, 'pct_barrio']], 
                       on=[DatasetKeys.FECHA, DatasetKeys.BARRIO], how='left')
 
-        # 5. Distribuimos los totales de la GVA según la cuota de cada barrio
+        # 4. Distribución de métricas oficiales (GVA) basada en la cuota ponderada
         cols_gva = [
             DatasetKeys.NUM_VT_BARRIO_GVA,
             DatasetKeys.PLAZAS_VIVIENDAS_GVA,
@@ -180,41 +195,51 @@ class WaterPreprocessor:
             if col in df.columns:
                 df[col] = (df[col] * df['pct_barrio']).round(2)
 
-        # 6. Calcular Viviendas Ilegales (Estimación INE - Registros Oficiales GVA ponderados)
-        df[DatasetKeys.NUM_VT_ILEGALES] = (df[DatasetKeys.NUM_VT_BARRIO_INE] - df[DatasetKeys.NUM_VT_BARRIO_GVA]).clip(lower=0)
+        # 5. ESTIMACIÓN DE ILEGALIDAD:
+        # Delta entre el total estimado por INE y el registro oficial de la GVA ponderado.
+        # Un valor positivo indica presencia probable de pisos turísticos no declarados.
+        df[DatasetKeys.NUM_VT_SIN_REGISTRAR] = (df[DatasetKeys.NUM_VT_BARRIO_INE] - df[DatasetKeys.NUM_VT_BARRIO_GVA]).clip(lower=0)
         
-        # 7. Porcentaje de Viviendas Ilegales sobre el total de contratos
-        df[DatasetKeys.PCT_VT_ILEGALES] = ((df[DatasetKeys.NUM_VT_ILEGALES] / df[DatasetKeys.NUM_CONTRATOS].replace(0, np.nan)) * 100).fillna(0).round(2)
+        # Normalización por densidad de contratos
+        df[DatasetKeys.PCT_VT_SIN_REGISTRAR] = ((df[DatasetKeys.NUM_VT_SIN_REGISTRAR] / df[DatasetKeys.NUM_CONTRATOS].replace(0, np.nan)) * 100).fillna(0).round(2)
 
-        df = df.drop(columns=['pct_barrio']) # ,DatasetKeys.NUM_VT_BARRIO_INE, DatasetKeys.NUM_VT_BARRIO_GVA])
+        df = df.drop(columns=['pct_barrio']) 
         return df
     
     @staticmethod
-    def _save_processed_df(df_not_scaled: pd.DataFrame, df_scaled: pd.DataFrame) -> pd.DataFrame:
-        """Persiste el DataFrame preprocesado en disco en formato CSV."""
+    def _save_processed_df(df_not_scaled: pd.DataFrame, df_scaled: pd.DataFrame) -> None:
+        """Centraliza la persistencia de los diferentes estados del dataset."""
         df_not_scaled.to_csv(Paths.PROC_CSV_AMAEM_NOT_SCALED, index=False)
         df_scaled.to_csv(Paths.PROC_CSV_AMAEM_SCALED, index=False)
     
     @staticmethod
     def process_raw_data(df: pd.DataFrame) -> pd.DataFrame:
-        """Pipeline principal de limpieza que orquesta los pasos de preprocesamiento de un DataFrame crudo."""
+        """
+        Orquestación maestra del pipeline de datos 'Water2Fraud'.
+        
+        Encadena secuencialmente todos los procesadores especializados y culmina con 
+        la ingeniería de características y el escalado final.
+        """
         df_not_scaled = df.copy()
         
-        # AMAEM
+        # Fase A: Ingesta y limpieza base (Agua)
         df_not_scaled = AMAEMProcessor.process(df_not_scaled)
-        #df_not_scaled = df_not_scaled[df_not_scaled[DatasetKeys.USO] == "DOMESTICO"]
         
-        # Turismo
+        # Fase B: Enriquecimiento Turístico (INE y GVA)
         df_not_scaled = INETourismProcessor.process(df_not_scaled)
         df_not_scaled = GVAProcessor.process(df_not_scaled)
-        # Clima
+        
+        # Fase C: Enriquecimiento Ambiental (AEMET y Sentinel)
         df_not_scaled = AEMETProcessor.process(df_not_scaled)
         df_not_scaled = SentinelProcessor.process(df_not_scaled)
-        # Viviendas Turísticas Ilegales INE - GVA
+
+        # Fase D: Ingeniería de Variables de Fraude (Gap de Ilegalidad)
         df_not_scaled = WaterPreprocessor._engineer_features(df_not_scaled)
 
-        # Escalado
+        # Fase E: Normalización para Deep Learning
         df_scaled = WaterPreprocessor._scale_features(df_not_scaled)
+        
+        # Persistencia del estado final
         WaterPreprocessor._save_processed_df(df_not_scaled, df_scaled)
 
         return df_scaled

@@ -38,8 +38,8 @@ class DatasetKeys:
     # --- Columnas Externas (GVA) ---
     NUM_VT_BARRIO_GVA       = "num_viviendas_barrio_gva"
     NUM_HOTELES_BARRIO_GVA  = "num_hoteles_barrio_gva"
-    NUM_VT_ILEGALES         = "num_vt_ilegales"
-    PCT_VT_ILEGALES         = "porcentaje_vt_ilegales %"
+    NUM_VT_SIN_REGISTRAR    = "num_vt_sin_registrar"
+    PCT_VT_SIN_REGISTRAR    = "porcentaje_vt_sin registrar %"
 
     PLAZAS_VIVIENDAS_GVA      = "plazas_viviendas_barrio_gva"
     PLAZAS_HOTELES_BARRIO_GVA = "plazas_hoteles_barrio_gva"
@@ -47,13 +47,16 @@ class DatasetKeys:
     # --- Columnas de Resultados (Modelos y Pipeline) ---
     CLUSTER                 = "cluster"
     RECONSTRUCTION_ERROR    = "reconstruction_error"
-    AE_SCORE                = "ae_score"
-    PHYSICS_SCORE           = "physics_score"
+    
     RESIDUO_POSITIVO        = "residuo_positivo"
     FRAUD_RISK_SCORE        = "FRAUD_RISK_SCORE"
     ALERTA_TURISTICA_ILEGAL = "ALERTA_TURISTICA_ILEGAL"
+    
+    
     IS_AE_ANOMALY           = "is_ae_anomaly"
     IS_PHYSICS_ANOMALY      = "is_physics_anomaly"
+    AE_SCORE                = "ae_score"        # 100 = Umbral Anomalía
+    PHYSICS_SCORE           = "physics_score"   # 100 = Umbral Anomalía
     
     # --- Columnas de Reporte ---
     NIVEL_RIESGO            = "nivel_riesgo"
