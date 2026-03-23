@@ -106,13 +106,18 @@ class FisicosProcessor:
         for col in exogenas:
             df[col] = df[col].fillna(df[col].mean())
 
-        # Generación de variables dummies para el contexto geográfico y de uso
-        df_ml = pd.get_dummies(df, columns=[DatasetKeys.BARRIO, DatasetKeys.USO])
-        columnas_contexto = [col for col in df_ml.columns if col.startswith(DatasetKeys.BARRIO + '_') or col.startswith(DatasetKeys.USO + '_')]
+        # Añadimos contexto de fecha (mes) y uso para mejorar la capacidad predictiva sin memorizar barrios
+        df['mes_temp'] = pd.to_datetime(df[DatasetKeys.FECHA]).dt.month
         
-        # Entrenamiento del modelo de impacto
-        X, y = df_ml[exogenas + columnas_contexto], df_ml[DatasetKeys.RESIDUO]
-        ml_model = RandomForestRegressor(n_estimators=100, random_state=42, n_jobs=-1).fit(X, y)
+        # Generamos contextos de uso (DOMESTICO vs OTROS) - es de baja cardinalidad, seguro contra leakage masivo
+        df_ml = pd.get_dummies(df, columns=[DatasetKeys.USO])
+        columnas_contexto = [col for col in df_ml.columns if col.startswith(DatasetKeys.USO + '_')]
+        
+        X = df_ml[exogenas + [DatasetKeys.PREDICCION_FOURIER, 'mes_temp'] + columnas_contexto]
+        y = df_ml[DatasetKeys.RESIDUO]
+        
+        # Entrenamiento del modelo de impacto con restricción de profundidad para forzar generalización
+        ml_model = RandomForestRegressor(n_estimators=100, max_depth=8, random_state=42, n_jobs=-1).fit(X, y)
         
         df[DatasetKeys.IMPACTO_EXOGENO] = ml_model.predict(X)
         return df

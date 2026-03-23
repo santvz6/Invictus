@@ -142,7 +142,6 @@ def _add_choropleth(m, gdf, df_barrio, feature_col) -> bool:
         popup=folium.GeoJsonPopup(fields=["barrio_limpio"], aliases=["Barrio:"]),
     ).add_to(m)
 
-    colormap.add_to(m)
     return True
 
 

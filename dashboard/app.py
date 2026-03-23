@@ -154,26 +154,31 @@ with st.sidebar:
     opciones_label = [f"{meses_es[f.month]} {f.year}" for f in fechas_disponibles]
     mapeo_fechas = {label: f.to_timestamp() for label, f in zip(opciones_label, fechas_disponibles)}
 
-    # Presets de tiempo con botones atractivos
+    # --- Nueva lógica de Filtro Temporal (Fix KeyError: 'E') ---
+    if "temp_range" not in st.session_state:
+        st.session_state.temp_range = (opciones_label[0], opciones_label[-1])
+
     st.markdown("##### ⏱ Selección Rápida")
-    c1, c2 = st.columns(2)
-    if c1.button("📅 Último Año", width="stretch"):
-        st.session_state.temp_slider = (opciones_label[-13] if len(opciones_label) >= 13 else opciones_label[0], opciones_label[-1])
-    if c2.button("📊 Todo", width="stretch"):
-        st.session_state.temp_slider = (opciones_label[0], opciones_label[-1])
+    c_p1, c_p2 = st.columns(2)
+    if c_p1.button("📅 Último Año", width="stretch"):
+        st.session_state.temp_range = (opciones_label[-13] if len(opciones_label) >= 13 else opciones_label[0], opciones_label[-1])
+        st.rerun()
+    if c_p2.button("📊 Todo", width="stretch"):
+        st.session_state.temp_range = (opciones_label[0], opciones_label[-1])
+        st.rerun()
 
-    if "temp_slider" not in st.session_state:
-        st.session_state.temp_slider = (opciones_label[0], opciones_label[-1])
-
-    # Slider de rango
+    # Slider de rango: pasamos 'value' explícitamente para forzar comportamiento de RANGO
     rango_sel = st.select_slider(
         "Rango temporal",
         options=opciones_label,
-        key="temp_slider"
+        value=st.session_state.temp_range
     )
+    # Sincronizamos de vuelta al estado manual
+    st.session_state.temp_range = rango_sel
 
     fecha_inicio = mapeo_fechas[rango_sel[0]]
     fecha_fin    = mapeo_fechas[rango_sel[1]] + pd.offsets.MonthEnd(0)
+
 
     st.markdown("#### 🏙 Filtro por Barrio")
     barrios_lista = ["Todos los barrios"] + sorted(df_full[DatasetKeys.BARRIO].unique().tolist())
