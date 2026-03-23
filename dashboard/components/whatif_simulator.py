@@ -132,6 +132,8 @@ def render_whatif(df: pd.DataFrame, barrio: str | None = None):
     vt_range      = _safe_range(DatasetKeys.PCT_VT_BARRIO_INE,   0.0, 80.0)
     ratio_range   = _safe_range(DatasetKeys.CONSUMO_RATIO,   0.1,  30.0)
     vt_sin_range  = _safe_range(DatasetKeys.PCT_VT_SIN_REGISTRAR, 0.0, 50.0)
+    ndvi_range    = _safe_range(DatasetKeys.NDVI_SATELITE, 0.0, 1.0)
+    hoteles_range = _safe_range(DatasetKeys.PLAZAS_HOTELES_BARRIO_GVA, 0.0, 5000.0)
 
     # Valores por defecto: media del barrio en los últimos 12 meses
     def_temp   = df_b[DatasetKeys.TEMP_MEDIA].mean() if DatasetKeys.TEMP_MEDIA in df_b.columns else np.mean(temp_range)
@@ -139,6 +141,8 @@ def render_whatif(df: pd.DataFrame, barrio: str | None = None):
     def_vt     = df_b[DatasetKeys.PCT_VT_BARRIO_INE].mean() if DatasetKeys.PCT_VT_BARRIO_INE in df_b.columns else np.mean(vt_range)
     def_ratio  = df_b[DatasetKeys.CONSUMO_RATIO].mean() if DatasetKeys.CONSUMO_RATIO in df_b.columns else np.mean(ratio_range)
     def_vt_sin = df_b[DatasetKeys.PCT_VT_SIN_REGISTRAR].mean() if DatasetKeys.PCT_VT_SIN_REGISTRAR in df_b.columns else np.mean(vt_sin_range)
+    def_ndvi   = df_b[DatasetKeys.NDVI_SATELITE].mean() if DatasetKeys.NDVI_SATELITE in df_b.columns else np.mean(ndvi_range)
+    def_hoteles= df_b[DatasetKeys.PLAZAS_HOTELES_BARRIO_GVA].mean() if DatasetKeys.PLAZAS_HOTELES_BARRIO_GVA in df_b.columns else np.mean(hoteles_range)
 
     # ─── Sliders ─────────────────────────────────────────────────────────
     st.markdown("#### 🎛️ Modificación de Features")
@@ -156,6 +160,11 @@ def render_whatif(df: pd.DataFrame, barrio: str | None = None):
             min_value=precip_range[0], max_value=precip_range[1],
             value=float(def_precip), step=1.0, key="wif_precip",
         )
+        ndvi_val = st.slider(
+            "🌿 Índice Vegetación (NDVI)",
+            min_value=float(ndvi_range[0]), max_value=float(ndvi_range[1]),
+            value=float(def_ndvi), step=0.05, key="wif_ndvi",
+        )
 
     with col2:
         vt_val = st.slider(
@@ -167,6 +176,11 @@ def render_whatif(df: pd.DataFrame, barrio: str | None = None):
             "🕵️ % VT Sin Registrar (Ilegales)",
             min_value=float(vt_sin_range[0]), max_value=float(vt_sin_range[1]),
             value=float(def_vt_sin), step=0.5, key="wif_vtsin",
+        )
+        hoteles_val = st.slider(
+            "🏨 Plazas Hoteleras",
+            min_value=float(hoteles_range[0]), max_value=float(hoteles_range[1]),
+            value=float(def_hoteles), step=10.0, key="wif_hoteles",
         )
         
     with col3:
@@ -187,6 +201,10 @@ def render_whatif(df: pd.DataFrame, barrio: str | None = None):
         df_sim[DatasetKeys.PCT_VT_BARRIO_INE] = np.clip(df_sim[DatasetKeys.PCT_VT_BARRIO_INE] + (vt_val - def_vt), 0, 100)
     if DatasetKeys.PCT_VT_SIN_REGISTRAR in df_sim.columns: 
         df_sim[DatasetKeys.PCT_VT_SIN_REGISTRAR] = np.clip(df_sim[DatasetKeys.PCT_VT_SIN_REGISTRAR] + (vt_sin_val - def_vt_sin), 0, 100)
+    if DatasetKeys.NDVI_SATELITE in df_sim.columns: 
+        df_sim[DatasetKeys.NDVI_SATELITE] = np.clip(df_sim[DatasetKeys.NDVI_SATELITE] + (ndvi_val - def_ndvi), 0, 1)
+    if DatasetKeys.PLAZAS_HOTELES_BARRIO_GVA in df_sim.columns: 
+        df_sim[DatasetKeys.PLAZAS_HOTELES_BARRIO_GVA] = np.clip(df_sim[DatasetKeys.PLAZAS_HOTELES_BARRIO_GVA] + (hoteles_val - def_hoteles), 0, None)
     if DatasetKeys.CONSUMO_RATIO in df_sim.columns: 
         df_sim[DatasetKeys.CONSUMO_RATIO] = np.clip(df_sim[DatasetKeys.CONSUMO_RATIO] + (ratio_val - def_ratio), 0.1, None)
 
@@ -295,9 +313,17 @@ def render_whatif(df: pd.DataFrame, barrio: str | None = None):
               delta_color="inverse" if ae_score_sim > 100 else "off")
 
     # ─── Curva de simulación ──────────────────────────────────────────────
-    st.markdown("#### 📈 Evolución a 12 meses: Real Modificado vs Modelos Predictivos")
+    st.markdown("#### 📈 Evolución a 12 meses: Modelos Predictivos en Escenario")
     
-    fechas_str = df_sim[DatasetKeys.FECHA].dt.strftime("%Y-%m")
+    # Abstracción a un escenario simulado base (Año 2024)
+    fechas_str = []
+    año_base = 2024
+    mes_anterior = -1
+    for dt in df_sim[DatasetKeys.FECHA]:
+        if mes_anterior != -1 and dt.month < mes_anterior:
+            año_base += 1 # Cambio de año (ej. Diciembre -> Enero)
+        fechas_str.append(f"{año_base}-{dt.month:02d}")
+        mes_anterior = dt.month
     
     fig = go.Figure()
     
@@ -318,21 +344,12 @@ def render_whatif(df: pd.DataFrame, barrio: str | None = None):
         line_shape='spline'
     ))
     
-    # Línea de Consumo Simulado (Real modificado)
-    fig.add_trace(go.Scatter(
-        x=fechas_str, y=df_sim[DatasetKeys.CONSUMO_RATIO],
-        mode="lines+markers", name="Escenario (Simulado)",
-        line=dict(color="#4cc9f0", width=3),
-        marker=dict(size=6, symbol="circle", color="#0d1b2a", line=dict(color="#4cc9f0", width=2)),
-        line_shape='spline'
-    ))
-    
     fig.update_layout(
         template="plotly_dark",
         paper_bgcolor="rgba(0,0,0,0)",
         plot_bgcolor="rgba(255,255,255,0.02)",
         margin=dict(l=0, r=0, t=10, b=0),
-        xaxis=dict(gridcolor="rgba(255,255,255,0.05)", showgrid=True),
+        xaxis=dict(gridcolor="rgba(255,255,255,0.05)", showgrid=True, type='category'),
         yaxis=dict(gridcolor="rgba(255,255,255,0.05)", title="Ratio m³ / contrato"),
         legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
         height=320,
