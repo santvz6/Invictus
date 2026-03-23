@@ -240,7 +240,7 @@ def render_anomaly_panel(df: pd.DataFrame, barrio: str):
         height=340,
         hovermode="x unified"
     )
-    st.plotly_chart(fig, use_container_width=True)
+    st.plotly_chart(fig, width='stretch')
 
     # 4. Listado Tabular de Anomalías
     st.markdown("#### 🚨 Registro de Anomalías")
@@ -261,6 +261,6 @@ def render_anomaly_panel(df: pd.DataFrame, barrio: str):
             DatasetKeys.AE_SCORE: "Riesgo Anomalía (IA)"
         })
         
-        st.dataframe(df_table.style.format(precision=2), hide_index=True, use_container_width=True)
+        st.dataframe(df_table.style.format(precision=2), hide_index=True, width='stretch')
     else:
         st.success("✅ Sin comportamiento anómalo detectado en este periodo.")

@@ -122,7 +122,7 @@ def load_dataframe() -> pd.DataFrame:
         for col, default_val in [(DatasetKeys.IS_AE_ANOMALY, False), (DatasetKeys.ALERTA_TURISTICA_ILEGAL, False), (DatasetKeys.CLUSTER, 0)]:
             if col not in df.columns:
                 df[col] = default_val
-            df[col] = df[col].fillna(default_val)
+            df[col] = df[col].fillna(default_val).infer_objects(copy=False)
             
         if DatasetKeys.PREDICCION_FOURIER not in df.columns:
             if DatasetKeys.CONSUMO_FISICO_ESPERADO in df.columns:

@@ -149,7 +149,7 @@ def render_whatif(df: pd.DataFrame, barrio: str | None = None):
         yaxis=dict(gridcolor="#2a3a4a"),
         height=250,
     )
-    st.plotly_chart(fig, use_container_width=True)
+    st.plotly_chart(fig, width='stretch')
 
     # ─── Curva de simulación ──────────────────────────────────────────────
     st.markdown("#### 🌡 Curva: Temperatura vs. Consumo (todo lo demás fijo)")
@@ -175,4 +175,4 @@ def render_whatif(df: pd.DataFrame, barrio: str | None = None):
         yaxis=dict(title="m³ estimados", gridcolor="#2a3a4a"),
         height=220,
     )
-    st.plotly_chart(fig2, use_container_width=True)
+    st.plotly_chart(fig2, width='stretch')

@@ -10,7 +10,8 @@ import os
 import pandas as pd
 import streamlit as st
 
-# ── Configuración de ruta para importar src/ ──────────────────────────────
+# ── Configuración de pandas y ruta para src/ ──────────────────────────────
+pd.set_option('future.no_silent_downcasting', True)
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
 from src.config import DatasetKeys
@@ -148,12 +149,31 @@ with st.sidebar:
     st.markdown("#### 🗓 Filtro Temporal")
 
     fechas_disponibles = sorted(df_full[DatasetKeys.FECHA].dt.to_period("M").unique())
-    fecha_min = df_full[DatasetKeys.FECHA].min().to_pydatetime()
-    fecha_max = df_full[DatasetKeys.FECHA].max().to_pydatetime()
+    meses_es = {1: "Ene", 2: "Feb", 3: "Mar", 4: "Abr", 5: "May", 6: "Jun", 
+                7: "Jul", 8: "Ago", 9: "Sep", 10: "Oct", 11: "Nov", 12: "Dic"}
+    opciones_label = [f"{meses_es[f.month]} {f.year}" for f in fechas_disponibles]
+    mapeo_fechas = {label: f.to_timestamp() for label, f in zip(opciones_label, fechas_disponibles)}
 
-    col_f1, col_f2 = st.columns(2)
-    fecha_inicio = col_f1.date_input("Desde", value=fecha_min, min_value=fecha_min, max_value=fecha_max)
-    fecha_fin    = col_f2.date_input("Hasta", value=fecha_max, min_value=fecha_min, max_value=fecha_max)
+    # Presets de tiempo con botones atractivos
+    st.markdown("##### ⏱ Selección Rápida")
+    c1, c2 = st.columns(2)
+    if c1.button("📅 Último Año", width="stretch"):
+        st.session_state.temp_slider = (opciones_label[-13] if len(opciones_label) >= 13 else opciones_label[0], opciones_label[-1])
+    if c2.button("📊 Todo", width="stretch"):
+        st.session_state.temp_slider = (opciones_label[0], opciones_label[-1])
+
+    if "temp_slider" not in st.session_state:
+        st.session_state.temp_slider = (opciones_label[0], opciones_label[-1])
+
+    # Slider de rango
+    rango_sel = st.select_slider(
+        "Rango temporal",
+        options=opciones_label,
+        key="temp_slider"
+    )
+
+    fecha_inicio = mapeo_fechas[rango_sel[0]]
+    fecha_fin    = mapeo_fechas[rango_sel[1]] + pd.offsets.MonthEnd(0)
 
     st.markdown("#### 🏙 Filtro por Barrio")
     barrios_lista = ["Todos los barrios"] + sorted(df_full[DatasetKeys.BARRIO].unique().tolist())
