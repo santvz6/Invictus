@@ -214,13 +214,20 @@ def load_geodataframe() -> gpd.GeoDataFrame | None:
         return None
 
 
-def filter_dataframe(df: pd.DataFrame, fecha_inicio, fecha_fin, contrato_filter: str | None = None) -> pd.DataFrame:
-    """Filtra el DataFrame por rango de fechas y opcionalmente por barrio."""
+def filter_dataframe(df: pd.DataFrame, fecha_inicio, fecha_fin, 
+                     barrio_filter: str | None = None,
+                     uso_filter: str | None = None) -> pd.DataFrame:
+    """Filtra el DataFrame por rango de fechas, barrio y uso."""
     mask = (df[DatasetKeys.FECHA] >= pd.Timestamp(fecha_inicio)) & \
            (df[DatasetKeys.FECHA] <= pd.Timestamp(fecha_fin))
     df_filtered = df[mask]
-    if contrato_filter and contrato_filter != "Todos los barrios":
-        df_filtered = df_filtered[df_filtered[DatasetKeys.BARRIO] == contrato_filter]
+    
+    if barrio_filter and barrio_filter != "Todos los barrios":
+        df_filtered = df_filtered[df_filtered[DatasetKeys.BARRIO] == barrio_filter]
+        
+    if uso_filter and uso_filter != "Todos los usos":
+        df_filtered = df_filtered[df_filtered[DatasetKeys.USO] == uso_filter]
+        
     return df_filtered
 
 

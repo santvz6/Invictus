@@ -61,7 +61,7 @@ def render_map(df_barrio: pd.DataFrame, feature_col: str, gdf=None) -> dict:
     return st_folium(
         m, 
         use_container_width=True, 
-        height=550, 
+        height=650, 
         returned_objects=["last_active_drawing", "last_clicked"]
     )
 

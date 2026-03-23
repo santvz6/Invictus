@@ -163,10 +163,17 @@ with st.sidebar:
     feature_label = st.radio(
         "Variable a visualizar:",
         list(FEATURES_DISPONIBLES.keys()),
-        index=0,
+        index=2, # Ratio Consumo/Contrato por defecto
         key="feature_radio",
     )
     feature_col = FEATURES_DISPONIBLES[feature_label]
+
+    st.markdown("#### 🚽 Filtro por Uso")
+    usos_disponibles = ["Todos los usos"] + sorted(df_full[DatasetKeys.USO].unique().tolist())
+    # Recomendamos DOMESTICO para que coincida con la IA
+    uso_filtro = st.selectbox("Tipo de uso", usos_disponibles, 
+                              index=usos_disponibles.index("DOMESTICO") if "DOMESTICO" in usos_disponibles else 0)
+
 
     st.markdown("---")
     # Selector de barrio por clic en mapa
@@ -190,7 +197,7 @@ with st.sidebar:
 # ════════════════════════════════════════════════════════════════════════════
 # 5. FILTRADO DE DATOS
 # ════════════════════════════════════════════════════════════════════════════
-df_filtered = filter_dataframe(df_full, fecha_inicio, fecha_fin, barrio_filtro)
+df_filtered = filter_dataframe(df_full, fecha_inicio, fecha_fin, barrio_filtro, uso_filtro)
 df_barrio_agg = aggregate_by_barrio(df_filtered)
 
 
@@ -237,7 +244,7 @@ tab_mapa, tab_whatif, tab_informe = st.tabs([
 
 # ─── TAB 1: MAPA ────────────────────────────────────────────────────────────
 with tab_mapa:
-    col_mapa, col_panel = st.columns([3, 1.2], gap="medium")
+    col_mapa, col_panel = st.columns([4, 1.4], gap="medium")
 
     with col_mapa:
         st.markdown(f"#### 🌡 Mapa de Calor — *{feature_label}*")
