@@ -321,4 +321,4 @@ with tab_whatif:
 
 # ─── TAB 3: INFORME LLM ────────────────────────────────────────────────────
 with tab_informe:
-    render_llm_report(st.session_state.barrio_seleccionado)
+    render_llm_report(st.session_state.barrio_seleccionado, df_filtered)

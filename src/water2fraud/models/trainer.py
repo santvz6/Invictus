@@ -97,7 +97,7 @@ def train_autoencoder(model: nn.Module, dataloader: DataLoader, epochs=100, lr=1
 
 
 def detect_ae_anomalies(model: nn.Module, X_sequences: np.ndarray, metadata_df: pd.DataFrame, 
-                     feature_names=None, device="cpu", ) -> pd.DataFrame:
+                     feature_names=None, device="cpu") -> tuple[pd.DataFrame, float]:
     """
     Evalúa secuencias mediante el Autoencoder para detectar anomalías.
     
@@ -152,7 +152,7 @@ def detect_ae_anomalies(model: nn.Module, X_sequences: np.ndarray, metadata_df: 
     metadata_df[DatasetKeys.IS_AE_ANOMALY] = global_errors > umbral
     metadata_df[DatasetKeys.AE_SCORE] = (global_errors / (umbral if umbral > 0 else 1e-9)) * 100
     
-    return metadata_df
+    return metadata_df, float(umbral)
 
 
 # =====================================================================

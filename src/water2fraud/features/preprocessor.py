@@ -120,7 +120,7 @@ class WaterPreprocessor:
         return X, meta_df, feature_cols
 
     @staticmethod
-    def _scale_features(df: pd.DataFrame) -> pd.DataFrame:
+    def _scale_features(df: pd.DataFrame) -> tuple[pd.DataFrame, dict]:
         """
         Normaliza las magnitudes de las variables para optimizar el aprendizaje profundo.
         
@@ -129,27 +129,18 @@ class WaterPreprocessor:
         """
         from sklearn.preprocessing import MinMaxScaler, RobustScaler
         df = df.copy()
+        scalers = {}
 
-        # Identificación de columnas para escalado lineal
-        cols_to_robust = [
-            col for col, scale_type in WaterPreprocessor.FEATURES.items() 
-            if scale_type == WaterPreprocessor.ROBUST and col in df.columns
-        ]
-        
-        if cols_to_robust:
-            robust_scaler = RobustScaler()
-            df[cols_to_robust] = robust_scaler.fit_transform(df[cols_to_robust])
-
-        cols_to_minmax = [
-            col for col, scale_type in WaterPreprocessor.FEATURES.items() 
-            if scale_type == WaterPreprocessor.MIN_MAX and col in df.columns
-        ]
-        
-        if cols_to_minmax:
-            scaler = MinMaxScaler()
-            # Nota técnica: Se asume un ligero 'Data Leakage' controlado al ajustar sobre 
-            # todo el histórico del Autoencoder para garantizar una reconstrucción estable.
-            df[cols_to_minmax] = scaler.fit_transform(df[cols_to_minmax])
+        for col, scale_type in WaterPreprocessor.FEATURES.items():
+            if col in df.columns:
+                if scale_type == WaterPreprocessor.ROBUST:
+                    scaler = RobustScaler()
+                    df[col] = scaler.fit_transform(df[[col]])
+                    scalers[col] = scaler
+                elif scale_type == WaterPreprocessor.MIN_MAX:
+                    scaler = MinMaxScaler()
+                    df[col] = scaler.fit_transform(df[[col]])
+                    scalers[col] = scaler
         
         # Codificación cíclica del tiempo (Meses)
         # Permite que la red entienda que diciembre (12) está cerca de enero (1)
@@ -157,7 +148,7 @@ class WaterPreprocessor:
         df[DatasetKeys.MES_SIN] = (np.sin(2 * np.pi * meses / 12) + 1) / 2
         df[DatasetKeys.MES_COS] = (np.cos(2 * np.pi * meses / 12) + 1) / 2
 
-        return df
+        return df, scalers
 
     @staticmethod
     def _engineer_features(df: pd.DataFrame) -> pd.DataFrame:
@@ -213,7 +204,7 @@ class WaterPreprocessor:
         df_scaled.to_csv(Paths.PROC_CSV_AMAEM_SCALED, index=False)
     
     @staticmethod
-    def process_raw_data(df: pd.DataFrame) -> pd.DataFrame:
+    def process_raw_data(df: pd.DataFrame) -> tuple[pd.DataFrame, dict]:
         """
         Orquestación maestra del pipeline de datos 'Water2Fraud'.
         
@@ -237,9 +228,9 @@ class WaterPreprocessor:
         df_not_scaled = WaterPreprocessor._engineer_features(df_not_scaled)
 
         # Fase E: Normalización para Deep Learning
-        df_scaled = WaterPreprocessor._scale_features(df_not_scaled)
+        df_scaled, scalers = WaterPreprocessor._scale_features(df_not_scaled)
         
         # Persistencia del estado final
         WaterPreprocessor._save_processed_df(df_not_scaled, df_scaled)
 
-        return df_scaled
+        return df_scaled, scalers

@@ -11,6 +11,8 @@ import pandas as pd
 import plotly.graph_objects as go
 import streamlit as st
 import torch
+import json
+import joblib
 from sklearn.ensemble import RandomForestRegressor
 from sklearn.preprocessing import MinMaxScaler, RobustScaler
 
@@ -18,61 +20,50 @@ from src.config import DatasetKeys, Paths
 from src.water2fraud.features.preprocessor import WaterPreprocessor
 from src.water2fraud.models.autoencoder import LSTMAutoencoder
 
-@st.cache_resource(show_spinner="Cargando motores IA y Físico...")
+@st.cache_resource(show_spinner="Cargando motores IA y Físico (Caché)...")
 def get_simulation_context():
     """
-    Carga los datos en bruto y entrena/ajusta los modelos físicos y escaladores 
-    necesarios para la simulación interactiva fiel al pipeline original.
+    Carga los modelos pre-entrenados y artefactos serializados (Joblib/JSON) 
+    para la simulación interactiva sin reentrenar en vivo.
     """
-    # 1. Carga de datos base no escalados
-    df_raw = pd.read_csv(Paths.PROC_CSV_AMAEM_NOT_SCALED)
-    df_raw[DatasetKeys.FECHA] = pd.to_datetime(df_raw[DatasetKeys.FECHA], errors='coerce')
-    
-    # Integrar baseline Fourier si está disponible
-    if Paths.PROC_CSV_AMAEM_FISICOS.exists():
-        df_fis = pd.read_csv(Paths.PROC_CSV_AMAEM_FISICOS)
-        df_fis[DatasetKeys.FECHA] = pd.to_datetime(df_fis[DatasetKeys.FECHA], errors='coerce')
-        df_raw = pd.merge(
-            df_raw, 
-            df_fis[[DatasetKeys.BARRIO, DatasetKeys.USO, DatasetKeys.FECHA, DatasetKeys.PREDICCION_FOURIER]], 
-            on=[DatasetKeys.BARRIO, DatasetKeys.USO, DatasetKeys.FECHA], 
-            how='left'
-        )
-    else:
-        df_raw[DatasetKeys.PREDICCION_FOURIER] = df_raw[DatasetKeys.CONSUMO_RATIO] * 0.95
+    if not Paths.EXPERIMENTS_DIR.exists():
+        raise FileNotFoundError("No se encontró el directorio de experimentos. Ejecute el pipeline primero.")
         
-    df_raw[DatasetKeys.PREDICCION_FOURIER] = df_raw[DatasetKeys.PREDICCION_FOURIER].fillna(df_raw[DatasetKeys.CONSUMO_RATIO] * 0.95)
-    
-    # 2. Entrenar el Modelo Físico (Random Forest de impacto exógeno)
-    df_ml = pd.get_dummies(df_raw, columns=[DatasetKeys.USO])
-    exogenas = [c for c in WaterPreprocessor.FEATURES.keys() if c in df_ml.columns and c != DatasetKeys.CONSUMO_RATIO]
-    if DatasetKeys.MES not in df_ml.columns:
-        df_ml[DatasetKeys.MES] = df_ml[DatasetKeys.FECHA].dt.month
+    exp_dirs = sorted([d for d in Paths.EXPERIMENTS_DIR.iterdir() if d.is_dir()])
+    if not exp_dirs:
+        raise FileNotFoundError("No hay experimentos entrenados disponibles.")
         
-    df_ml['mes_temp'] = df_ml[DatasetKeys.FECHA].dt.month
-    context_cols = [c for c in df_ml.columns if c.startswith(DatasetKeys.USO + '_')]
+    latest_exp = exp_dirs[-1]
     
-    features_rf = exogenas + [DatasetKeys.PREDICCION_FOURIER, 'mes_temp'] + context_cols
-    X_rf = df_ml[features_rf].fillna(0)
-    y_rf = (df_ml[DatasetKeys.CONSUMO_RATIO] - df_ml[DatasetKeys.PREDICCION_FOURIER]).fillna(0)
+    # 1. Cargar Modelos Físicos y Escaladores (ya entrenados)
+    rf_model = joblib.load(latest_exp / "rf_model.joblib")
+    scalers = joblib.load(latest_exp / "scalers.joblib")
     
-    rf_model = RandomForestRegressor(n_estimators=30, max_depth=8, random_state=42, n_jobs=-1)
-    rf_model.fit(X_rf, y_rf)
+    with open(latest_exp / "rf_features.json", "r") as f:
+        features_rf = json.load(f)
+        
+    with open(latest_exp / "thresholds.json", "r") as f:
+        thresholds = json.load(f)
+        
+    context_cols = [c for c in features_rf if c.startswith(DatasetKeys.USO + '_')]
     
-    # 3. Ajustar Escaladores para el Autoencoder
-    scalers = {}
-    for col, scale_type in WaterPreprocessor.FEATURES.items():
-        if col in df_raw.columns:
-            if scale_type == WaterPreprocessor.ROBUST:
-                s = RobustScaler()
-                s.fit(df_raw[[col]])
-                scalers[col] = s
-            elif scale_type == WaterPreprocessor.MIN_MAX:
-                s = MinMaxScaler()
-                s.fit(df_raw[[col]])
-                scalers[col] = s
+    # 2. Precargar todos los Autoencoders LSTM en memoria
+    lstm_models = {}
+    feature_cols = list(WaterPreprocessor.FEATURES.keys())
+    
+    for model_path in latest_exp.glob("ae_cluster_*.pth"):
+        cluster_id = model_path.stem.split("_")[-1]
+        
+        model_ae = LSTMAutoencoder(num_features=len(feature_cols), hidden_dim=128, latent_dim=16, seq_len=12)
+        try:
+            model_ae.load_state_dict(torch.load(model_path, map_location="cpu", weights_only=True))
+        except TypeError:
+            model_ae.load_state_dict(torch.load(model_path, map_location="cpu"))
+        model_ae.eval()
+        
+        lstm_models[int(cluster_id)] = model_ae
                 
-    return rf_model, scalers, features_rf, context_cols
+    return rf_model, scalers, features_rf, context_cols, thresholds, lstm_models
 
 
 def render_whatif(df: pd.DataFrame, barrio: str | None = None):
@@ -115,7 +106,7 @@ def render_whatif(df: pd.DataFrame, barrio: str | None = None):
 
     # ─── Carga de Contexto IA ───────────────────────────────────────────
     try:
-        rf_model, scalers, features_rf, context_cols = get_simulation_context()
+        rf_model, scalers, features_rf, context_cols, thresholds, lstm_models = get_simulation_context()
     except Exception as e:
         st.error(f"Error cargando contexto de simulación: {e}")
         return
@@ -193,20 +184,26 @@ def render_whatif(df: pd.DataFrame, barrio: str | None = None):
     # ─── Aplicar deltas a la serie temporal ──────────────────────────────
     df_sim = df_b.copy()
     
+    # Modificación Multiplicativa/Aditiva (Mayor rigor físico en What-If)
     if DatasetKeys.TEMP_MEDIA in df_sim.columns: 
-        df_sim[DatasetKeys.TEMP_MEDIA] += (temp_val - def_temp)
+        if def_temp != 0: df_sim[DatasetKeys.TEMP_MEDIA] *= (temp_val / def_temp)
+        else: df_sim[DatasetKeys.TEMP_MEDIA] += (temp_val - def_temp)
     if DatasetKeys.PRECIPITACION in df_sim.columns: 
-        df_sim[DatasetKeys.PRECIPITACION] = np.clip(df_sim[DatasetKeys.PRECIPITACION] + (precip_val - def_precip), 0, None)
+        if def_precip != 0: df_sim[DatasetKeys.PRECIPITACION] *= (precip_val / def_precip)
+        else: df_sim[DatasetKeys.PRECIPITACION] = np.clip(df_sim[DatasetKeys.PRECIPITACION] + (precip_val - def_precip), 0, None)
     if DatasetKeys.PCT_VT_BARRIO_INE in df_sim.columns: 
         df_sim[DatasetKeys.PCT_VT_BARRIO_INE] = np.clip(df_sim[DatasetKeys.PCT_VT_BARRIO_INE] + (vt_val - def_vt), 0, 100)
     if DatasetKeys.PCT_VT_SIN_REGISTRAR in df_sim.columns: 
         df_sim[DatasetKeys.PCT_VT_SIN_REGISTRAR] = np.clip(df_sim[DatasetKeys.PCT_VT_SIN_REGISTRAR] + (vt_sin_val - def_vt_sin), 0, 100)
     if DatasetKeys.NDVI_SATELITE in df_sim.columns: 
-        df_sim[DatasetKeys.NDVI_SATELITE] = np.clip(df_sim[DatasetKeys.NDVI_SATELITE] + (ndvi_val - def_ndvi), 0, 1)
+        if def_ndvi != 0: df_sim[DatasetKeys.NDVI_SATELITE] = np.clip(df_sim[DatasetKeys.NDVI_SATELITE] * (ndvi_val / def_ndvi), 0, 1)
+        else: df_sim[DatasetKeys.NDVI_SATELITE] = np.clip(df_sim[DatasetKeys.NDVI_SATELITE] + (ndvi_val - def_ndvi), 0, 1)
     if DatasetKeys.PLAZAS_HOTELES_BARRIO_GVA in df_sim.columns: 
-        df_sim[DatasetKeys.PLAZAS_HOTELES_BARRIO_GVA] = np.clip(df_sim[DatasetKeys.PLAZAS_HOTELES_BARRIO_GVA] + (hoteles_val - def_hoteles), 0, None)
+        if def_hoteles != 0: df_sim[DatasetKeys.PLAZAS_HOTELES_BARRIO_GVA] *= (hoteles_val / def_hoteles)
+        else: df_sim[DatasetKeys.PLAZAS_HOTELES_BARRIO_GVA] = np.clip(df_sim[DatasetKeys.PLAZAS_HOTELES_BARRIO_GVA] + (hoteles_val - def_hoteles), 0, None)
     if DatasetKeys.CONSUMO_RATIO in df_sim.columns: 
-        df_sim[DatasetKeys.CONSUMO_RATIO] = np.clip(df_sim[DatasetKeys.CONSUMO_RATIO] + (ratio_val - def_ratio), 0.1, None)
+        if def_ratio != 0: df_sim[DatasetKeys.CONSUMO_RATIO] = np.clip(df_sim[DatasetKeys.CONSUMO_RATIO] * (ratio_val / def_ratio), 0.1, None)
+        else: df_sim[DatasetKeys.CONSUMO_RATIO] = np.clip(df_sim[DatasetKeys.CONSUMO_RATIO] + (ratio_val - def_ratio), 0.1, None)
 
     # ─── 1. Inferencia del Modelo Físico (RF) ────────────────────────────
     df_sim_ml = pd.get_dummies(df_sim, columns=[DatasetKeys.USO])
@@ -250,19 +247,7 @@ def render_whatif(df: pd.DataFrame, barrio: str | None = None):
     seq_tensor = np.hstack(seq_scaled)
     
     cluster_id = df_b[DatasetKeys.CLUSTER].iloc[0] if DatasetKeys.CLUSTER in df_b.columns else 0
-    model_ae = None
-    
-    if Paths.EXPERIMENTS_DIR.exists():
-        exp_dirs = sorted([d for d in Paths.EXPERIMENTS_DIR.iterdir() if d.is_dir()])
-        if exp_dirs:
-            model_path = exp_dirs[-1] / f"ae_cluster_{int(cluster_id)}.pth"
-            if model_path.exists():
-                model_ae = LSTMAutoencoder(num_features=len(feature_cols), hidden_dim=128, latent_dim=16, seq_len=12)
-                try:
-                    model_ae.load_state_dict(torch.load(model_path, map_location="cpu", weights_only=True))
-                except TypeError:
-                    model_ae.load_state_dict(torch.load(model_path, map_location="cpu"))
-                model_ae.eval()
+    model_ae = lstm_models.get(int(cluster_id))
 
     if model_ae:
         with torch.no_grad():
@@ -277,12 +262,9 @@ def render_whatif(df: pd.DataFrame, barrio: str | None = None):
         else:
             consumo_ae_sim = df_sim[DatasetKeys.CONSUMO_RATIO].values
             
-        # Calcular puntuación de anomalía estandarizada (AE_SCORE)
+        # Calcular puntuación de anomalía estandarizada (AE_SCORE) con el JSON nativo
         ae_mae = np.mean(np.abs(reconst - seq_tensor))
-        error_orig = df_b[DatasetKeys.RECONSTRUCTION_ERROR].iloc[-1] if DatasetKeys.RECONSTRUCTION_ERROR in df_b.columns else 0.1
-        score_orig = df_b[DatasetKeys.AE_SCORE].iloc[-1] if DatasetKeys.AE_SCORE in df_b.columns else 50.0
-        
-        umbral = error_orig / (score_orig / 100) if score_orig > 0 else 0.1
+        umbral = thresholds.get(str(int(cluster_id)), 0.1)
         if umbral == 0: umbral = 0.1
         
         ae_score_sim = (ae_mae / umbral) * 100

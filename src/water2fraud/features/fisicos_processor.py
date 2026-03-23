@@ -37,7 +37,7 @@ class FisicosProcessor:
         return (m * t + c) + (a1 * np.cos(w * t) + b1 * np.sin(w * t)) + (a2 * np.cos(2 * w * t) + b2 * np.sin(2 * w * t))
 
     @staticmethod
-    def process(df: pd.DataFrame, feature_names: list[str]) -> pd.DataFrame:
+    def process(df: pd.DataFrame, feature_names: list[str]) -> tuple[pd.DataFrame, RandomForestRegressor, list[str]]:
         """
         Ejecuta el pipeline de cálculo del consumo físico esperado.
 
@@ -57,12 +57,12 @@ class FisicosProcessor:
         df = FisicosProcessor._calculate_fourier_baseline(df)
 
         # 3. Fase de ML: Modelado del impacto de variables exógenas
-        df = FisicosProcessor._calculate_ml_impact(df, feature_names)
+        df, rf_model, features_rf = FisicosProcessor._calculate_ml_impact(df, feature_names)
 
         # 4. Consolidación y persistencia
         df = FisicosProcessor._finalize_fisicos(df)
 
-        return df
+        return df, rf_model, features_rf
 
     @staticmethod
     def _prepare_data(df: pd.DataFrame) -> pd.DataFrame:
@@ -96,7 +96,7 @@ class FisicosProcessor:
         return df
 
     @staticmethod
-    def _calculate_ml_impact(df: pd.DataFrame, feature_names: list[str]) -> pd.DataFrame:
+    def _calculate_ml_impact(df: pd.DataFrame, feature_names: list[str]) -> tuple[pd.DataFrame, RandomForestRegressor, list[str]]:
         """Entrena un modelo para predecir cuánto del consumo depende de factores externos."""
         # Cálculo del residuo estacional (lo que Fourier no explica)
         df[DatasetKeys.RESIDUO] = df[DatasetKeys.CONSUMO_RATIO] - df[DatasetKeys.PREDICCION_FOURIER]
@@ -113,14 +113,15 @@ class FisicosProcessor:
         df_ml = pd.get_dummies(df, columns=[DatasetKeys.USO])
         columnas_contexto = [col for col in df_ml.columns if col.startswith(DatasetKeys.USO + '_')]
         
-        X = df_ml[exogenas + [DatasetKeys.PREDICCION_FOURIER, 'mes_temp'] + columnas_contexto]
-        y = df_ml[DatasetKeys.RESIDUO]
+        features_rf = exogenas + [DatasetKeys.PREDICCION_FOURIER, 'mes_temp'] + columnas_contexto
+        X = df_ml[features_rf].fillna(0)
+        y = df_ml[DatasetKeys.RESIDUO].fillna(0)
         
         # Entrenamiento del modelo de impacto con restricción de profundidad para forzar generalización
         ml_model = RandomForestRegressor(n_estimators=100, max_depth=8, random_state=42, n_jobs=-1).fit(X, y)
         
         df[DatasetKeys.IMPACTO_EXOGENO] = ml_model.predict(X)
-        return df
+        return df, ml_model, features_rf
 
     @staticmethod
     def _finalize_fisicos(df: pd.DataFrame) -> pd.DataFrame:

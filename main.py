@@ -58,23 +58,23 @@ class WaterApp:
         # FASE 0: Carga de datos
         df_raw = WaterApp._load_data()
         # FASE 1: Preprocesamiento y Secuenciación (Ventanas de 12 meses)
-        X_sequences, metadata_df, feature_names = WaterApp._phase_1_preprocessing(df_raw)
+        X_sequences, metadata_df, feature_names, scalers = WaterApp._phase_1_preprocessing(df_raw)
         # FASE 2: Clustering Temporal de Series
         labels, cluster_manager = WaterApp._phase_2_clustering(X_sequences)
         metadata_df[DatasetKeys.CLUSTER] = labels
         # FASE 3: Entrenamiento de Autoencoders por Clúster
         modelos_entrenados = WaterApp._phase_3_training(X_sequences, metadata_df, device)
         # FASE 4: Inferencia y Detección de Anomalías (Autoencoder)
-        df_ae_resultados = WaterApp._phase_4_ae_detection(X_sequences, metadata_df, modelos_entrenados, feature_names, device)
+        df_ae_resultados, umbrales = WaterApp._phase_4_ae_detection(X_sequences, metadata_df, modelos_entrenados, feature_names, device)
         # FASE 5: Ponderación Física y Cálculo de Riesgo de Fraude (Risk Score)
-        df_final = WaterApp._phase_5_risk_scoring(df_ae_resultados)
+        df_final, rf_model, rf_features = WaterApp._phase_5_risk_scoring(df_ae_resultados)
         # FASE 6: Guardado de resultados y modelos
-        WaterApp._save_results(df_final, cluster_manager, modelos_entrenados)
+        WaterApp._save_results(df_final, cluster_manager, modelos_entrenados, scalers, rf_model, rf_features, umbrales)
         
         return df_final
 
     @staticmethod
-    def _phase_1_preprocessing(df_raw: pd.DataFrame) -> tuple[np.ndarray, pd.DataFrame, list[str]]:
+    def _phase_1_preprocessing(df_raw: pd.DataFrame) -> tuple[np.ndarray, pd.DataFrame, list[str], dict]:
         """
         Limpia los datos crudos y genera las secuencias temporales.
 
@@ -88,13 +88,13 @@ class WaterApp:
                 - feature_names (list[str]): Nombres de las variables en el orden de X_sequences
         """
         logger.info("--- FASE 1: Preprocesamiento y Secuencias Temporales ---")
-        df_scaled = WaterPreprocessor.process_raw_data(df_raw)
+        df_scaled, scalers = WaterPreprocessor.process_raw_data(df_raw)
 
         # ! Aquí ya hemos cruzado df_scaled con los features.
         # ! Antes de crear las secuencias, WaterPreprocessor lo maneja.
         
         X_sequences, metadata_df, feature_names = WaterPreprocessor.create_sequences(df_scaled, sequence_length=12)
-        return X_sequences, metadata_df, feature_names
+        return X_sequences, metadata_df, feature_names, scalers
 
     @staticmethod
     def _phase_2_clustering(X_sequences: np.ndarray) -> tuple[np.ndarray, ClusterManager]:
@@ -171,7 +171,7 @@ class WaterApp:
     
     @staticmethod
     def _phase_4_ae_detection(X_sequences: np.ndarray, metadata_df: pd.DataFrame, 
-                           modelos: dict, feature_names: list[str], device: str) -> pd.DataFrame:
+                           modelos: dict, feature_names: list[str], device: str) -> tuple[pd.DataFrame, dict]:
         """
         Fase de Inferencia y Detección: Evalúa los datos a través de los modelos entrenados
         y aplica las restricciones de las leyes físicas.
@@ -190,6 +190,7 @@ class WaterApp:
         logger.info("--- FASE 4: Inferencia y Detección de Anomalías Turísticas ---")
         
         resultados_finales = []
+        umbrales = {}
         clusters_unicos = metadata_df[DatasetKeys.CLUSTER].unique()
 
         for cluster_id in sorted(clusters_unicos):
@@ -208,16 +209,17 @@ class WaterApp:
             model = modelos[model_key]
             
             # Detección Autoencoder
-            df_anomalias = detect_ae_anomalies(model, X_cluster, meta_cluster, 
+            df_anomalias, umbral = detect_ae_anomalies(model, X_cluster, meta_cluster, 
                                                feature_names=feature_names, device=device)
             resultados_finales.append(df_anomalias) 
+            umbrales[str(cluster_id)] = umbral
             
         # Unificar todos los resultados
         df_ae_resultados = pd.concat(resultados_finales, ignore_index=True)
-        return df_ae_resultados
+        return df_ae_resultados, umbrales
 
     @staticmethod
-    def _phase_5_risk_scoring(df_ae: pd.DataFrame, risk_score={"ae_weight": 0.75, "physics_weight": 0.25}) -> pd.DataFrame:
+    def _phase_5_risk_scoring(df_ae: pd.DataFrame, risk_score={"ae_weight": 0.75, "physics_weight": 0.25}) -> tuple[pd.DataFrame, object, list[str]]:
         """
         Cruza los errores de reconstrucción del Autoencoder (AE) con las predicciones
         físicas sobre los datos reales (no escalados) para generar una puntuación
@@ -235,7 +237,7 @@ class WaterApp:
         df_not_scaled = pd.read_csv(Paths.PROC_CSV_AMAEM_NOT_SCALED)
         df_not_scaled = df_not_scaled[df_not_scaled[DatasetKeys.USO] == "DOMESTICO"].copy()
         
-        df_fisicos    = FisicosProcessor.process(df_not_scaled, list(WaterPreprocessor.FEATURES.keys()))
+        df_fisicos, rf_model, rf_features = FisicosProcessor.process(df_not_scaled, list(WaterPreprocessor.FEATURES.keys()))
 
         # 2. Cruzamos AE con Física
         cols_ae = [DatasetKeys.BARRIO, DatasetKeys.USO, DatasetKeys.FECHA, 
@@ -281,7 +283,7 @@ class WaterApp:
         # Limpiamos columnas auxiliares
         df_final = df_final.drop(columns=[DatasetKeys.RESIDUO_POSITIVO])
         
-        return df_final
+        return df_final, rf_model, rf_features
 
     @staticmethod
     def _generate_alert_reasons(df: pd.DataFrame) -> pd.Series:
@@ -320,11 +322,14 @@ class WaterApp:
         return pd.read_csv(input_path)
 
     @staticmethod
-    def _save_results(df_resultados: pd.DataFrame, cluster_manager: ClusterManager, modelos: dict) -> None:
+    def _save_results(df_resultados: pd.DataFrame, cluster_manager: ClusterManager, modelos: dict, scalers: dict, rf_model: object, rf_features: list, umbrales: dict) -> None:
         """
         Persiste los resultados de la detección y los modelos entrenados.
         """
         logger.info("--- FASE 5: Guardando Resultados y Generando Reportes ---")
+        
+        import joblib
+        import json
         
         timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
         folder_path = Paths.EXPERIMENTS_DIR / timestamp
@@ -338,10 +343,19 @@ class WaterApp:
         # 2. Guardar dataset completo (para científicos de datos)
         df_resultados.to_csv(folder_path / "resultados_completos_tecnicos.csv", index=False)
 
-        # 3. Guardar Modelos
+        # 3. Guardar Modelos y Artefactos (Caché Dashboard)
         cluster_manager.save(folder_path / "ts_kmeans_model.joblib")
         for name, model in modelos.items():
             torch.save(model.state_dict(), folder_path / f"{name}.pth")
+            
+        joblib.dump(scalers, folder_path / "scalers.joblib")
+        joblib.dump(rf_model, folder_path / "rf_model.joblib")
+        
+        with open(folder_path / "rf_features.json", "w") as f:
+            json.dump(rf_features, f)
+            
+        with open(folder_path / "thresholds.json", "w") as f:
+            json.dump(umbrales, f)
 
         # 4. Generar Reporte Markdown Profesional
         WaterApp._generate_markdown_report(df_alertas, folder_path)
