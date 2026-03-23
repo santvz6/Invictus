@@ -5,8 +5,8 @@
 
 # Secundarios
 - [ ] Mejorar la visualización
-- [ ] Adaptar el branch `visualizations_definitive` a la neuva estructura de archivos.
-- [ ] RUN.md
+- [x] Adaptar el branch `visualizations_definitive` a la nueva estructura de archivos.
+- [] RUN.md
 
 # A la espera
 - [ ] Datos de Festivos

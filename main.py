@@ -217,7 +217,7 @@ class WaterApp:
         return df_ae_resultados
 
     @staticmethod
-    def _phase_5_risk_scoring(df_ae: pd.DataFrame, risk_score={"ae_weight": 0.8, "physics_weight": 0.2}) -> pd.DataFrame:
+    def _phase_5_risk_scoring(df_ae: pd.DataFrame, risk_score={"ae_weight": 0.75, "physics_weight": 0.25}) -> pd.DataFrame:
         """
         Cruza los errores de reconstrucción del Autoencoder (AE) con las predicciones
         físicas sobre los datos reales (no escalados) para generar una puntuación
