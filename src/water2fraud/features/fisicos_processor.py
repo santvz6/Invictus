@@ -78,20 +78,30 @@ class FisicosProcessor:
 
         for (barrio, uso), group in df.groupby([DatasetKeys.BARRIO, DatasetKeys.USO]):
             mask = (df[DatasetKeys.BARRIO] == barrio) & (df[DatasetKeys.USO] == uso)
-            y_target = group[DatasetKeys.CONSUMO_RATIO].values
-            t_arr = np.arange(len(y_target))
+            
+            # Evitamos Data Leakage: Ajustamos Fourier SOLO con datos de 2022-2023
+            train_mask = group[DatasetKeys.FECHA].dt.year <= 2023
+            
+            y_target_all = group[DatasetKeys.CONSUMO_RATIO].values
+            t_arr_all = np.arange(len(y_target_all))
+            
+            y_target_train = y_target_all[train_mask]
+            t_arr_train = t_arr_all[train_mask]
             
             try:
-                # Ajuste no lineal de parámetros (m, c, a1, b1, a2, b2)
-                coef, _ = curve_fit(
-                    FisicosProcessor._modelo_fourier, t_arr, y_target, 
-                    p0=[0, np.mean(y_target), 1000, 1000, 100, 100], maxfev=10000
-                )
-                df.loc[mask, DatasetKeys.PREDICCION_FOURIER] = FisicosProcessor._modelo_fourier(t_arr, *coef)
+                if len(y_target_train) > 0:
+                    coef, _ = curve_fit(
+                        FisicosProcessor._modelo_fourier, t_arr_train, y_target_train, 
+                        p0=[0, np.mean(y_target_train), 1000, 1000, 100, 100], maxfev=10000
+                    )
+                else:
+                    raise ValueError("Sin datos de entrenamiento")
+                # Predecimos para todos los meses (incluido 2024)
+                df.loc[mask, DatasetKeys.PREDICCION_FOURIER] = FisicosProcessor._modelo_fourier(t_arr_all, *coef)
             except Exception:
                 # Fallback: Si el ajuste falla por falta de datos, se usa el valor medio histórico
                 logger.warning(f"Fallo en ajuste Fourier para {barrio} - {uso}. Aplicando media.")
-                df.loc[mask, DatasetKeys.PREDICCION_FOURIER] = np.mean(y_target)
+                df.loc[mask, DatasetKeys.PREDICCION_FOURIER] = np.mean(y_target_train) if len(y_target_train) > 0 else np.mean(y_target_all)
         
         return df
 
@@ -117,10 +127,17 @@ class FisicosProcessor:
         X = df_ml[features_rf].fillna(0)
         y = df_ml[DatasetKeys.RESIDUO].fillna(0)
         
-        # Entrenamiento del modelo de impacto con restricción de profundidad para forzar generalización
-        ml_model = RandomForestRegressor(n_estimators=100, max_depth=8, random_state=42, n_jobs=-1).fit(X, y)
+        # Evitamos Data Leakage: Random Forest SOLO ve el contexto histórico (2022-2023)
+        train_mask_ml = pd.to_datetime(df[DatasetKeys.FECHA]).dt.year <= 2023
+        X_train, y_train = X[train_mask_ml], y[train_mask_ml]
         
-        df[DatasetKeys.IMPACTO_EXOGENO] = ml_model.predict(X)
+        if len(X_train) == 0:
+            logger.warning("No hay datos de 2022-2023 para el RF Físico. Entrenando con todo.")
+            X_train, y_train = X, y
+            
+        ml_model = RandomForestRegressor(n_estimators=100, max_depth=8, random_state=42, n_jobs=-1).fit(X_train, y_train)
+        
+        df[DatasetKeys.IMPACTO_EXOGENO] = ml_model.predict(X) # Predice todo, incluido 2024
         return df, ml_model, features_rf
 
     @staticmethod
