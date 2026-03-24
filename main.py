@@ -193,6 +193,12 @@ class WaterApp:
         umbrales = {}
         clusters_unicos = metadata_df[DatasetKeys.CLUSTER].unique()
 
+        # Ponderación para el error de reconstrucción (haciéndolo escalable)
+        feature_weights = {
+            DatasetKeys.CONSUMO_RATIO: 0.70,
+            DatasetKeys.PCT_VT_SIN_REGISTRAR: 0.30
+        }
+
         for cluster_id in sorted(clusters_unicos):
             logger.info(f"> Evaluando viviendas del Clúster {cluster_id}...")
             
@@ -210,7 +216,8 @@ class WaterApp:
             
             # Detección Autoencoder
             df_anomalias, umbral = detect_ae_anomalies(model, X_cluster, meta_cluster, 
-                                               feature_names=feature_names, device=device)
+                                               feature_names=feature_names, device=device,
+                                               feature_weights=feature_weights)
             resultados_finales.append(df_anomalias) 
             umbrales[str(cluster_id)] = umbral
             
@@ -241,9 +248,9 @@ class WaterApp:
 
         # 2. Cruzamos AE con Física
         cols_ae = [DatasetKeys.BARRIO, DatasetKeys.USO, DatasetKeys.FECHA, 
-                    DatasetKeys.AE_SCORE, DatasetKeys.CLUSTER, DatasetKeys.IS_AE_ANOMALY]
-        ae_consumo_col = f'signed_error__{DatasetKeys.CONSUMO_RATIO}'
-        cols_ae.append(ae_consumo_col)
+                    DatasetKeys.CLUSTER,
+                    DatasetKeys.IS_GENERAL_ANOMALY, DatasetKeys.IS_WEIGHTED_ANOMALY,
+                    DatasetKeys.AE_SCORE_GENERAL, DatasetKeys.AE_SCORE_WEIGHTED]
 
         df_final = pd.merge(
             df_fisicos, 
@@ -255,16 +262,17 @@ class WaterApp:
         # 3. Normalizamos Errores Físicos (0 a 100)
         scaler = MinMaxScaler(feature_range=(0, 100))
         
-        # El AE_SCORE ya viene normalizado localmente (100 = umbral) desde Phase 4
-        # Aplicamos la restricción física de "Direccionalidad"
-        df_final.loc[df_final[ae_consumo_col] <= 0, DatasetKeys.AE_SCORE] = 0
+        # El AE_SCORE_WEIGHTED ya viene normalizado localmente (100 = umbral) desde Phase 4
         
         df_final[DatasetKeys.RESIDUO_POSITIVO] = df_final[DatasetKeys.RESIDUO].clip(lower=0)
         df_final[DatasetKeys.PHYSICS_SCORE] = scaler.fit_transform(df_final[[DatasetKeys.RESIDUO_POSITIVO]])
 
+        umbral_fisico = np.percentile(df_final[DatasetKeys.PHYSICS_SCORE], AIConstants.FRAUD_RISK_PERCENTILE)
+        df_final[DatasetKeys.IS_PHYSICS_ANOMALY] = df_final[DatasetKeys.PHYSICS_SCORE] > umbral_fisico
+
         # 4. Calculamos el FRAUD RISK SCORE
         df_final[DatasetKeys.FRAUD_RISK_SCORE] = (
-             (df_final[DatasetKeys.AE_SCORE] * risk_score["ae_weight"]) + 
+             (df_final[DatasetKeys.AE_SCORE_WEIGHTED] * risk_score["ae_weight"]) + 
              (df_final[DatasetKeys.PHYSICS_SCORE] * risk_score["physics_weight"])
         )
 
@@ -289,7 +297,7 @@ class WaterApp:
     def _generate_alert_reasons(df: pd.DataFrame) -> pd.Series:
         def format_reason(row):
             reasons = []
-            ae_score = row.get(DatasetKeys.AE_SCORE, 0)
+            ae_score = row.get(DatasetKeys.AE_SCORE_WEIGHTED, 0)
             phys_score = row.get(DatasetKeys.PHYSICS_SCORE, 0)
             
             if ae_score > 60: reasons.append(f"Pattern IA ({ae_score:.0f}%)")
@@ -335,15 +343,39 @@ class WaterApp:
         folder_path = Paths.EXPERIMENTS_DIR / timestamp
         folder_path.mkdir(parents=True, exist_ok=True)
         
+        # Estrategia de partición de CSVs
+        base_cols = [DatasetKeys.BARRIO, DatasetKeys.USO, DatasetKeys.FECHA]
         
+        # 1. Alertas Priorizadas (Solo fraude detectado de alto impacto)
         df_alertas = df_resultados[df_resultados[DatasetKeys.ALERTA_TURISTICA_ILEGAL] == True].copy()
         df_alertas = df_alertas.sort_values(by=DatasetKeys.FRAUD_RISK_SCORE, ascending=False)    
-        df_alertas.to_csv(folder_path / "alertas_priorizadas.csv", index=False)
+        df_alertas.to_csv(folder_path / "01_alertas_priorizadas.csv", index=False)
         
-        # 2. Guardar dataset completo (para científicos de datos)
-        df_resultados.to_csv(folder_path / "resultados_completos_tecnicos.csv", index=False)
+        # 2. Resultados Generales (Resumen Ejecutivo)
+        general_cols = base_cols + [DatasetKeys.FRAUD_RISK_SCORE, DatasetKeys.NIVEL_RIESGO, DatasetKeys.MOTIVO, DatasetKeys.ALERTA_TURISTICA_ILEGAL]
+        df_generales = df_resultados[[c for c in general_cols if c in df_resultados.columns]]
+        df_generales.to_csv(folder_path / "02_resultados_generales.csv", index=False)
+        
+        # 3. Métricas Físicas (Predicciones y Residuos)
+        fisica_cols = base_cols + [DatasetKeys.CONSUMO_FISICO_ESPERADO, DatasetKeys.PREDICCION_FOURIER, DatasetKeys.IMPACTO_EXOGENO, DatasetKeys.RESIDUO, DatasetKeys.PHYSICS_SCORE, DatasetKeys.IS_PHYSICS_ANOMALY]
+        df_fisica = df_resultados[[c for c in fisica_cols if c in df_resultados.columns]]
+        df_fisica.to_csv(folder_path / "03_metricas_fisicas.csv", index=False)
+        
+        # 4. Métricas Autoencoder (IA y Anomalías Principales)
+        ae_cols = base_cols + [DatasetKeys.CLUSTER, DatasetKeys.AE_SCORE_GENERAL, DatasetKeys.AE_SCORE_WEIGHTED, DatasetKeys.IS_GENERAL_ANOMALY, DatasetKeys.IS_WEIGHTED_ANOMALY]
+        df_ae = df_resultados[[c for c in ae_cols if c in df_resultados.columns]]
+        df_ae.to_csv(folder_path / "04_metricas_autoencoder.csv", index=False)
+        
+        # 5. Desglose de Errores de Reconstrucción (por Feature)
+        ae_extra = [c for c in df_resultados.columns if 'error' in c.lower() and c not in ae_cols]
+        feat_err_cols = base_cols + [DatasetKeys.CLUSTER] + ae_extra
+        df_feat_errors = df_resultados[[c for c in feat_err_cols if c in df_resultados.columns]]
+        df_feat_errors.to_csv(folder_path / "05_errores_reconstruccion_features.csv", index=False)
+        
+        # 6. Dataset Completo (Para Científicos de Datos)
+        df_resultados.to_csv(folder_path / "06_resultados_completos_tecnicos.csv", index=False)
 
-        # 3. Guardar Modelos y Artefactos (Caché Dashboard)
+        # 7. Guardar Modelos y Artefactos (Caché Dashboard)
         cluster_manager.save(folder_path / "ts_kmeans_model.joblib")
         for name, model in modelos.items():
             torch.save(model.state_dict(), folder_path / f"{name}.pth")

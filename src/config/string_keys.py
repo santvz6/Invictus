@@ -56,9 +56,11 @@ class DatasetKeys:
     ALERTA_TURISTICA_ILEGAL = "ALERTA_TURISTICA_ILEGAL"
     
     # Flags Booleanos de Anomalía
-    IS_AE_ANOMALY           = "is_ae_anomaly"
     IS_PHYSICS_ANOMALY      = "is_physics_anomaly"
-    AE_SCORE                = "ae_score"        # Escala 0-100 (100 = Umbral de Alerta)
+    IS_GENERAL_ANOMALY      = "is_general_anomaly"
+    IS_WEIGHTED_ANOMALY     = "is_weighted_anomaly"
+    AE_SCORE_GENERAL        = "ae_score_general"
+    AE_SCORE_WEIGHTED       = "ae_score_weighted"
     PHYSICS_SCORE           = "physics_score"   # Escala 0-100 (100 = Umbral de Alerta)
     
     # --- Campos para generación de Reportes Finales ---

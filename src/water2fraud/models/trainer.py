@@ -97,7 +97,7 @@ def train_autoencoder(model: nn.Module, dataloader: DataLoader, epochs=100, lr=1
 
 
 def detect_ae_anomalies(model: nn.Module, X_sequences: np.ndarray, metadata_df: pd.DataFrame, 
-                     feature_names=None, device="cpu") -> tuple[pd.DataFrame, float]:
+                     feature_names=None, device="cpu", feature_weights: dict = None) -> tuple[pd.DataFrame, float]:
     """
     Detecta anomalías en las secuencias de entrada utilizando un modelo Autoencoder entrenado.
 
@@ -110,6 +110,7 @@ def detect_ae_anomalies(model: nn.Module, X_sequences: np.ndarray, metadata_df: 
         metadata_df: DataFrame con metadatos asociados a cada secuencia (ej. IDs, fechas).
         feature_names: Lista opcional con los nombres de las características.
         device: Dispositivo para realizar la inferencia ('cpu' o 'cuda').
+        feature_weights: Diccionario opcional para ponderar variables específicas en la detección de anomalías.
 
     Returns:
         tuple: (DataFrame con errores por secuencia y metadatos, umbral de anomalía sugerido).
@@ -130,20 +131,37 @@ def detect_ae_anomalies(model: nn.Module, X_sequences: np.ndarray, metadata_df: 
     # 2. DESGLOSE DE ERROR POR FEATURE
     # Promediamos solo a lo largo de los 12 meses (dim=1), manteniendo separadas las features
     feature_errors = torch.mean(torch.abs(reconstructions - X_tensor), dim=1).cpu().numpy()
-    signed_feature_errors = torch.mean(X_tensor - reconstructions, dim=1).cpu().numpy()
     
     # Añadimos una columna al DataFrame por cada feature
     for i, name in enumerate(feature_names):
         metadata_df[f'error__{name}'] = feature_errors[:, i]
-        metadata_df[f'signed_error__{name}'] = signed_feature_errors[:, i]
     
     # LÓGICA DE FLAGS Y SCORES LOCALES (POR CLÚSTER)
     # 100 significa que el error está exactamente en el umbral del percentil X
-    umbral = np.percentile(global_errors,  AIConstants.AE_ANOMALIES_PERCENTILE)
-    metadata_df[DatasetKeys.IS_AE_ANOMALY] = global_errors > umbral
-    metadata_df[DatasetKeys.AE_SCORE] = (global_errors / (umbral if umbral > 0 else 1e-9)) * 100
+    umbral_general = np.percentile(global_errors,  AIConstants.AE_ANOMALIES_PERCENTILE)
+    metadata_df[DatasetKeys.IS_GENERAL_ANOMALY] = global_errors > umbral_general
+    metadata_df[DatasetKeys.AE_SCORE_GENERAL] = (global_errors / (umbral_general if umbral_general > 0 else 1e-9)) * 100
     
-    return metadata_df, float(umbral)
+    if feature_weights and feature_names:
+        weighted_errors = np.zeros(X_sequences.shape[0])
+        total_weight = sum(feature_weights.values())
+        for feature_name, weight in feature_weights.items():
+            if feature_name in feature_names:
+                idx = feature_names.index(feature_name)
+                weighted_errors += feature_errors[:, idx] * (weight / total_weight)
+        
+        umbral_ponderado = np.percentile(weighted_errors, AIConstants.AE_ANOMALIES_PERCENTILE)
+        metadata_df[DatasetKeys.IS_WEIGHTED_ANOMALY] = weighted_errors > umbral_ponderado
+        metadata_df[DatasetKeys.AE_SCORE_WEIGHTED] = (weighted_errors / (umbral_ponderado if umbral_ponderado > 0 else 1e-9)) * 100
+        
+        umbral_final = float(umbral_ponderado)
+    else:
+        metadata_df[DatasetKeys.IS_WEIGHTED_ANOMALY] = metadata_df[DatasetKeys.IS_GENERAL_ANOMALY]
+        metadata_df[DatasetKeys.AE_SCORE_WEIGHTED] = metadata_df[DatasetKeys.AE_SCORE_GENERAL]
+        
+        umbral_final = float(umbral_general)
+        
+    return metadata_df, umbral_final
 
 
 # =====================================================================
