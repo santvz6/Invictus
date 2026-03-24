@@ -251,6 +251,9 @@ class WaterApp:
                     DatasetKeys.CLUSTER,
                     DatasetKeys.IS_GENERAL_ANOMALY, DatasetKeys.IS_WEIGHTED_ANOMALY,
                     DatasetKeys.AE_SCORE_GENERAL, DatasetKeys.AE_SCORE_WEIGHTED]
+        
+        # Propagamos dinámicamente el error global y los desgloses por feature al dataset final
+        cols_ae.extend([c for c in df_ae.columns if c.startswith("error__") or c == DatasetKeys.RECONSTRUCTION_ERROR])
 
         df_final = pd.merge(
             df_fisicos, 
@@ -367,7 +370,7 @@ class WaterApp:
         df_ae.to_csv(folder_path / "04_metricas_autoencoder.csv", index=False)
         
         # 5. Desglose de Errores de Reconstrucción (por Feature)
-        ae_extra = [c for c in df_resultados.columns if 'error' in c.lower() and c not in ae_cols]
+        ae_extra = [c for c in df_resultados.columns if c.startswith("error__") and c not in ae_cols]
         feat_err_cols = base_cols + [DatasetKeys.CLUSTER] + ae_extra
         df_feat_errors = df_resultados[[c for c in feat_err_cols if c in df_resultados.columns]]
         df_feat_errors.to_csv(folder_path / "05_errores_reconstruccion_features.csv", index=False)
