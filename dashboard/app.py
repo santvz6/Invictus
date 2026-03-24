@@ -242,7 +242,8 @@ st.markdown("""
 
 # KPIs globales rápidos
 total_contratos = int(df_filtered[DatasetKeys.NUM_CONTRATOS].sum()) if DatasetKeys.NUM_CONTRATOS in df_filtered.columns else 0
-total_alertas   = int(df_filtered[DatasetKeys.ALERTA_TURISTICA_ILEGAL].sum()) if DatasetKeys.ALERTA_TURISTICA_ILEGAL in df_filtered.columns else 0
+alert_col_global = DatasetKeys.ALERTA_TURISTICA_ILEGAL
+total_alertas   = int(df_filtered[alert_col_global].sum()) if alert_col_global in df_filtered.columns else 0
 total_consumo   = df_filtered[DatasetKeys.CONSUMO].sum() if DatasetKeys.CONSUMO in df_filtered.columns else 0
 num_barrios     = df_filtered[DatasetKeys.BARRIO].nunique()
 
@@ -277,7 +278,7 @@ with tab_mapa:
             f"Periodo: **{fecha_inicio.strftime('%m-%Y')}** → **{fecha_fin.strftime('%m-%Y')}** · "
             f"{'Todos los barrios' if barrio_filtro == 'Todos los barrios' else barrio_filtro}"
         )
-        map_output = render_map(df_barrio_agg, feature_col, gdf)
+        map_output = render_map(df_barrio_agg, feature_col, gdf, alert_col_global)
 
         # Detectar clic en el mapa (nombre del barrio desde popup)
         if map_output and map_output.get("last_active_drawing"):

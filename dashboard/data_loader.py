@@ -44,6 +44,9 @@ FEATURES_DISPONIBLES = {
     "Nº VT por Barrio":          DatasetKeys.NUM_VT_BARRIO_INE,
     "Temperatura Media (°C)":    DatasetKeys.TEMP_MEDIA,
     "Precipitación (mm)":        DatasetKeys.PRECIPITACION,
+    "Score IA (Autoencoder)":    DatasetKeys.AE_SCORE_WEIGHTED,
+    "Score Físico (Fourier)":    DatasetKeys.PHYSICS_SCORE,
+    "Riesgo Fraude Global":      DatasetKeys.FRAUD_RISK_SCORE,
 }
 
 
@@ -70,7 +73,9 @@ def load_dataframe() -> pd.DataFrame:
             experimentos = sorted([d for d in Paths.EXPERIMENTS_DIR.iterdir() if d.is_dir()])
             if experimentos:
                 latest_exp = experimentos[-1]
-                res_path = latest_exp / "resultados_completos_tecnicos.csv"
+                res_path = latest_exp / "06_resultados_completos_tecnicos.csv"
+                if not res_path.exists():
+                    res_path = latest_exp / "resultados_completos_tecnicos.csv"
                 if res_path.exists():
                     df_res = pd.read_csv(res_path)
                     # Quitar espacios en blanco de los nombres de columnas (Bug de Pandas espacial al guardar)
@@ -87,8 +92,9 @@ def load_dataframe() -> pd.DataFrame:
                         cols_merge.append(DatasetKeys.USO)
                         
                     cols_extract = [
-                        DatasetKeys.RECONSTRUCTION_ERROR, DatasetKeys.AE_SCORE, 
-                        DatasetKeys.IS_AE_ANOMALY, DatasetKeys.ALERTA_TURISTICA_ILEGAL, 
+                        DatasetKeys.RECONSTRUCTION_ERROR, DatasetKeys.AE_SCORE_WEIGHTED, DatasetKeys.AE_SCORE_GENERAL,
+                        DatasetKeys.IS_WEIGHTED_ANOMALY, DatasetKeys.IS_GENERAL_ANOMALY, DatasetKeys.ALERTA_TURISTICA_ILEGAL, 
+                        DatasetKeys.IS_PHYSICS_ANOMALY, DatasetKeys.PHYSICS_SCORE, DatasetKeys.FRAUD_RISK_SCORE,
                         DatasetKeys.CLUSTER, DatasetKeys.CONSUMO_FISICO_ESPERADO, 
                         DatasetKeys.PREDICCION_FOURIER
                     ]
@@ -97,7 +103,7 @@ def load_dataframe() -> pd.DataFrame:
                     # IMPORTANTE: Asegurar que las columnas de interés son numéricas 
                     # (el strip las puede dejar como object si venían con espacios)
                     for col in cols_extract:
-                        if col in [DatasetKeys.IS_AE_ANOMALY, DatasetKeys.ALERTA_TURISTICA_ILEGAL]:
+                        if col in [DatasetKeys.IS_WEIGHTED_ANOMALY, DatasetKeys.IS_GENERAL_ANOMALY, DatasetKeys.IS_PHYSICS_ANOMALY, DatasetKeys.ALERTA_TURISTICA_ILEGAL]:
                             df_res[col] = df_res[col].map(lambda x: str(x).lower() == 'true')
                         else:
                             df_res[col] = pd.to_numeric(df_res[col], errors='coerce').fillna(0.0)
@@ -107,19 +113,23 @@ def load_dataframe() -> pd.DataFrame:
                         df = df.merge(df_res_sub, on=cols_merge, how="left")
 
         # 2. Parche de seguridad para el Dashboard: asegurar las columnas de inferencia
-        if DatasetKeys.AE_SCORE not in df.columns:
+        if DatasetKeys.AE_SCORE_WEIGHTED not in df.columns:
             if DatasetKeys.CONSUMO_FISICO_ESPERADO in df.columns and DatasetKeys.CONSUMO in df.columns:
                 denominador = df[DatasetKeys.CONSUMO_FISICO_ESPERADO].fillna(1).replace(0, 1)
-                df[DatasetKeys.AE_SCORE] = (abs(df[DatasetKeys.CONSUMO] - df[DatasetKeys.CONSUMO_FISICO_ESPERADO]) / denominador).round(4) * 100
+                df[DatasetKeys.AE_SCORE_WEIGHTED] = (abs(df[DatasetKeys.CONSUMO] - df[DatasetKeys.CONSUMO_FISICO_ESPERADO]) / denominador).round(4) * 100
+                df[DatasetKeys.PHYSICS_SCORE] = df[DatasetKeys.AE_SCORE_WEIGHTED] * 0.5
+                df[DatasetKeys.FRAUD_RISK_SCORE] = df[DatasetKeys.AE_SCORE_WEIGHTED] * 0.8
             else:
-                df[DatasetKeys.AE_SCORE] = 0.0
-        for col in [DatasetKeys.RECONSTRUCTION_ERROR, DatasetKeys.AE_SCORE]:
+                df[DatasetKeys.AE_SCORE_WEIGHTED] = 0.0
+                df[DatasetKeys.PHYSICS_SCORE] = 0.0
+                df[DatasetKeys.FRAUD_RISK_SCORE] = 0.0
+        for col in [DatasetKeys.RECONSTRUCTION_ERROR, DatasetKeys.AE_SCORE_WEIGHTED, DatasetKeys.AE_SCORE_GENERAL, DatasetKeys.PHYSICS_SCORE, DatasetKeys.FRAUD_RISK_SCORE]:
             if col in df.columns:
                 df[col] = df[col].fillna(0.0)
             else:
                 df[col] = 0.0
 
-        for col, default_val in [(DatasetKeys.IS_AE_ANOMALY, False), (DatasetKeys.ALERTA_TURISTICA_ILEGAL, False), (DatasetKeys.CLUSTER, 0)]:
+        for col, default_val in [(DatasetKeys.IS_WEIGHTED_ANOMALY, False), (DatasetKeys.IS_GENERAL_ANOMALY, False), (DatasetKeys.IS_PHYSICS_ANOMALY, False), (DatasetKeys.ALERTA_TURISTICA_ILEGAL, False), (DatasetKeys.CLUSTER, 0)]:
             if col not in df.columns:
                 df[col] = default_val
             df[col] = df[col].fillna(default_val).infer_objects(copy=False)
@@ -175,8 +185,13 @@ def load_dataframe() -> pd.DataFrame:
                 DatasetKeys.CONSUMO_FISICO_ESPERADO: round(consumo_fisico, 1),
                 DatasetKeys.PREDICCION_FOURIER:   round(consumo_fisico * 0.95, 1),
                 DatasetKeys.RECONSTRUCTION_ERROR: round(abs(consumo - consumo_fisico) / consumo_fisico, 4),
-                DatasetKeys.IS_AE_ANOMALY:        is_anomaly,
+                DatasetKeys.IS_WEIGHTED_ANOMALY:  is_anomaly,
+                DatasetKeys.IS_GENERAL_ANOMALY:   is_anomaly,
+                DatasetKeys.IS_PHYSICS_ANOMALY:   is_anomaly,
                 DatasetKeys.ALERTA_TURISTICA_ILEGAL: is_anomaly,
+                DatasetKeys.AE_SCORE_WEIGHTED:    is_anomaly * 100.0,
+                DatasetKeys.PHYSICS_SCORE:        is_anomaly * 100.0,
+                DatasetKeys.FRAUD_RISK_SCORE:     is_anomaly * 100.0,
                 DatasetKeys.CLUSTER:              int(np.random.randint(0, 3)),
             })
 
@@ -244,8 +259,12 @@ def aggregate_by_barrio(df: pd.DataFrame) -> pd.DataFrame:
         DatasetKeys.PRECIPITACION:            "mean",
         DatasetKeys.CONSUMO_FISICO_ESPERADO:  "sum",
         DatasetKeys.PREDICCION_FOURIER:       "sum",
-        DatasetKeys.AE_SCORE:                 "mean",
-        DatasetKeys.IS_AE_ANOMALY:            "sum",
+        DatasetKeys.AE_SCORE_WEIGHTED:        "mean",
+        DatasetKeys.AE_SCORE_GENERAL:         "mean",
+        DatasetKeys.PHYSICS_SCORE:            "mean",
+        DatasetKeys.FRAUD_RISK_SCORE:         "mean",
+        DatasetKeys.IS_WEIGHTED_ANOMALY:      "sum",
+        DatasetKeys.IS_PHYSICS_ANOMALY:       "sum",
         DatasetKeys.ALERTA_TURISTICA_ILEGAL:  "sum",
     }
     # Filtramos columnas que existan

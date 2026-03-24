@@ -22,7 +22,7 @@ COLORMAP_STEPS  = ["#0d1b2a", "#1b4965", "#2d6a4f", "#52b788", "#d9ed92",
                    "#f4a261", "#e76f51", "#c1121f"]
 
 
-def render_map(df_barrio: pd.DataFrame, feature_col: str, gdf=None) -> dict:
+def render_map(df_barrio: pd.DataFrame, feature_col: str, gdf=None, alert_col: str=DatasetKeys.ALERTA_TURISTICA_ILEGAL) -> dict:
     """
     Dibuja el mapa de calor interactivo.
 
@@ -47,13 +47,13 @@ def render_map(df_barrio: pd.DataFrame, feature_col: str, gdf=None) -> dict:
     choropleth_success = False
     if gdf is not None and not gdf.empty and feature_col in df_barrio.columns:
         try:
-            choropleth_success = _add_choropleth(m, gdf, df_barrio, feature_col)
+            choropleth_success = _add_choropleth(m, gdf, df_barrio, feature_col, alert_col)
         except Exception:
             choropleth_success = False
     
     if not choropleth_success:
         # ── Fallback: HeatMap con coordenadas aproximadas por barrio ──
-        _add_heatmap_fallback(m, df_barrio, feature_col)
+        _add_heatmap_fallback(m, df_barrio, feature_col, alert_col)
 
     # ── Leyenda flotante ───────────────────────────────────────────────
     _add_legend(m, feature_col, df_barrio.get(feature_col, pd.Series([0])))
@@ -66,7 +66,7 @@ def render_map(df_barrio: pd.DataFrame, feature_col: str, gdf=None) -> dict:
     )
 
 
-def _add_choropleth(m, gdf, df_barrio, feature_col) -> bool:
+def _add_choropleth(m, gdf, df_barrio, feature_col, alert_col) -> bool:
     """Añade capa Choropleth usando geometrías reales + datos. Retorna True si tuvo éxito."""
     import branca.colormap as cm
 
@@ -95,7 +95,7 @@ def _add_choropleth(m, gdf, df_barrio, feature_col) -> bool:
         
     gdf_merged[feature_col] = gdf_merged[feature_col].fillna(0)
     
-    for col in [DatasetKeys.RECONSTRUCTION_ERROR, DatasetKeys.ALERTA_TURISTICA_ILEGAL]:
+    for col in [DatasetKeys.RECONSTRUCTION_ERROR, DatasetKeys.FRAUD_RISK_SCORE, DatasetKeys.AE_SCORE_WEIGHTED, DatasetKeys.PHYSICS_SCORE, alert_col]:
         if col not in gdf_merged.columns:
             gdf_merged[col] = 0.0
             
@@ -133,8 +133,8 @@ def _add_choropleth(m, gdf, df_barrio, feature_col) -> bool:
         highlight_function=highlight_fn,
         tooltip=folium.GeoJsonTooltip(
             fields=["barrio_limpio", feature_col,
-                    DatasetKeys.RECONSTRUCTION_ERROR, DatasetKeys.ALERTA_TURISTICA_ILEGAL],
-            aliases=["Barrio:", f"{feature_col}:", "Error reconstrucción:", "Alertas:"],
+                    DatasetKeys.FRAUD_RISK_SCORE, DatasetKeys.AE_SCORE_WEIGHTED, DatasetKeys.PHYSICS_SCORE, alert_col],
+            aliases=["Barrio:", f"{feature_col}:", "Riesgo Fraude:", "Score IA:", "Score Físico:", "Alertas Activas:"],
             localize=True,
             style=("background-color: #0d1b2a; color: #e0e0e0; font-family: 'Inter', sans-serif; "
                    "font-size: 13px; padding: 10px; border: 1px solid #4cc9f0; border-radius: 6px;")
@@ -145,7 +145,7 @@ def _add_choropleth(m, gdf, df_barrio, feature_col) -> bool:
     return True
 
 
-def _add_heatmap_fallback(m, df_barrio, feature_col):
+def _add_heatmap_fallback(m, df_barrio, feature_col, alert_col):
     """
     Fallback: posiciona los barrios con coordenadas aproximadas centradas en Alicante
     y dibuja un HeatMap interpolado.
@@ -207,7 +207,7 @@ def _add_heatmap_fallback(m, df_barrio, feature_col):
             ALICANTE_CENTER[1] + np.random.uniform(-0.04, 0.04),
         ))
         val = row.get(feature_col, 0)
-        anomalias = int(row.get(DatasetKeys.ALERTA_TURISTICA_ILEGAL, 0))
+        anomalias = int(row.get(alert_col, 0))
         folium.CircleMarker(
             location=[lat, lon],
             radius=6,

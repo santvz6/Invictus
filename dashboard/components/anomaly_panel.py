@@ -102,6 +102,20 @@ def render_anomaly_panel(df: pd.DataFrame, barrio: str):
     df_b = df[barrios_limpios == barrio].copy()
     
     st.markdown(f"### Análisis: {barrio}")
+    
+    alert_filter_label = st.radio(
+        "Filtro de anomalías en gráficas:",
+        ["Riesgo de Fraude (Global)", "Anomalías IA (Autoencoder)", "Anomalías Físicas (Fourier)"],
+        index=0,
+        key=f"alert_radio_{barrio}",
+    )
+    alert_col_map = {
+        "Riesgo de Fraude (Global)": DatasetKeys.ALERTA_TURISTICA_ILEGAL,
+        "Anomalías IA (Autoencoder)": DatasetKeys.IS_WEIGHTED_ANOMALY,
+        "Anomalías Físicas (Fourier)": DatasetKeys.IS_PHYSICS_ANOMALY
+    }
+    alert_col = alert_col_map[alert_filter_label]
+    
     st.markdown("<hr style='margin: 0.5em 0; border-color: rgba(76,201,240,0.2);'/>", unsafe_allow_html=True)
     
     if df_b.empty:
@@ -124,10 +138,11 @@ def render_anomaly_panel(df: pd.DataFrame, barrio: str):
     }
     if esperado_col in df_b.columns:
         agg_dict[esperado_col] = 'mean'
-    if DatasetKeys.ALERTA_TURISTICA_ILEGAL in df_b.columns:
-        agg_dict[DatasetKeys.ALERTA_TURISTICA_ILEGAL] = 'max' # Si algún "uso" dio alerta, se marca el mes
-    if DatasetKeys.AE_SCORE in df_b.columns:
-        agg_dict[DatasetKeys.AE_SCORE] = 'mean'
+    if alert_col in df_b.columns:
+        agg_dict[alert_col] = 'max' # Si algún "uso" dio alerta, se marca el mes
+    for score_col in [DatasetKeys.AE_SCORE_WEIGHTED, DatasetKeys.PHYSICS_SCORE, DatasetKeys.FRAUD_RISK_SCORE]:
+        if score_col in df_b.columns:
+            agg_dict[score_col] = 'mean'
         
     df_monthly = df_b.groupby(DatasetKeys.FECHA).agg(agg_dict).reset_index()
     df_monthly = df_monthly.sort_values(DatasetKeys.FECHA)
@@ -152,7 +167,7 @@ def render_anomaly_panel(df: pd.DataFrame, barrio: str):
         df_monthly = df_monthly.merge(df_ae, on=DatasetKeys.FECHA, how="left")
         usar_ae = True
 
-    alertas = df_monthly[DatasetKeys.ALERTA_TURISTICA_ILEGAL].sum() if DatasetKeys.ALERTA_TURISTICA_ILEGAL in df_monthly.columns else 0
+    alertas = df_monthly[alert_col].sum() if alert_col in df_monthly.columns else 0
 
     c1, c2 = st.columns(2)
     c1.metric("Consumo Total", f"{consumo_total:,.0f} m³", 
@@ -200,8 +215,8 @@ def render_anomaly_panel(df: pd.DataFrame, barrio: str):
     ))
 
     # Resaltar puntos exactos de Anomalía
-    if DatasetKeys.ALERTA_TURISTICA_ILEGAL in df_monthly.columns:
-        df_anomalias = df_monthly[df_monthly[DatasetKeys.ALERTA_TURISTICA_ILEGAL] > 0]
+    if alert_col in df_monthly.columns:
+        df_anomalias = df_monthly[df_monthly[alert_col] > 0]
         if not df_anomalias.empty:
             df_exceso = df_anomalias[df_anomalias["ratio_real"] > df_anomalias["ratio_esperado"]]
             df_defecto = df_anomalias[df_anomalias["ratio_real"] <= df_anomalias["ratio_esperado"]]
@@ -213,7 +228,7 @@ def render_anomaly_panel(df: pd.DataFrame, barrio: str):
                     mode='markers', 
                     name='Anomalía (Exceso)',
                     marker=dict(color='#ff4b4b', size=8, symbol='x', line=dict(width=0.6, color='#ff4b4b')),
-                    hovertext=df_exceso[DatasetKeys.AE_SCORE].apply(lambda x: f"Riesgo AE (IA): {x:.1f}%"),
+                    hovertext=df_exceso[DatasetKeys.FRAUD_RISK_SCORE].apply(lambda x: f"Riesgo Fraude: {x:.1f}%") if DatasetKeys.FRAUD_RISK_SCORE in df_exceso.columns else None,
                     hoverinfo="text+x+y"
                 ))
                 
@@ -224,7 +239,7 @@ def render_anomaly_panel(df: pd.DataFrame, barrio: str):
                     mode='markers', 
                     name='Anomalía (Defecto)',
                     marker=dict(color='#ffa500', size=8, symbol='cross', line=dict(width=0.6, color='#ffa500')),
-                    hovertext=df_defecto[DatasetKeys.AE_SCORE].apply(lambda x: f"Riesgo AE (IA): {x:.1f}%"),
+                    hovertext=df_defecto[DatasetKeys.FRAUD_RISK_SCORE].apply(lambda x: f"Riesgo Fraude: {x:.1f}%") if DatasetKeys.FRAUD_RISK_SCORE in df_defecto.columns else None,
                     hoverinfo="text+x+y"
                 ))
 
@@ -244,21 +259,24 @@ def render_anomaly_panel(df: pd.DataFrame, barrio: str):
 
     # 4. Listado Tabular de Anomalías
     st.markdown("#### Registro de Anomalías")
-    if DatasetKeys.ALERTA_TURISTICA_ILEGAL in df_monthly.columns and alertas > 0:
-        cols_to_show = [DatasetKeys.FECHA, "ratio_real", "ratio_esperado", DatasetKeys.AE_SCORE]
+    if alert_col in df_monthly.columns and alertas > 0:
+        cols_to_show = [DatasetKeys.FECHA, "ratio_real", "ratio_esperado", DatasetKeys.FRAUD_RISK_SCORE, DatasetKeys.AE_SCORE_WEIGHTED, DatasetKeys.PHYSICS_SCORE]
         cols_to_show = [c for c in cols_to_show if c in df_monthly.columns]
         
         df_table = df_anomalias[cols_to_show].copy()
         df_table[DatasetKeys.FECHA] = df_table[DatasetKeys.FECHA].dt.strftime("%Y-%m")
-        if DatasetKeys.AE_SCORE in df_table.columns:
-            df_table[DatasetKeys.AE_SCORE] = df_table[DatasetKeys.AE_SCORE].apply(lambda x: f"{x:.1f}%")
+        for score_col in [DatasetKeys.FRAUD_RISK_SCORE, DatasetKeys.AE_SCORE_WEIGHTED, DatasetKeys.PHYSICS_SCORE]:
+            if score_col in df_table.columns:
+                df_table[score_col] = df_table[score_col].apply(lambda x: f"{x:.1f}%")
         
         # Formateo y renombrado visual
         df_table = df_table.rename(columns={
             DatasetKeys.FECHA: "Mes",
             "ratio_real": "Ratio Real",
             "ratio_esperado": "Esperado (AE)" if usar_ae else "Ratio Esperado",
-            DatasetKeys.AE_SCORE: "Riesgo Anomalía (IA)"
+            DatasetKeys.FRAUD_RISK_SCORE: "Riesgo Fraude",
+            DatasetKeys.AE_SCORE_WEIGHTED: "Score IA",
+            DatasetKeys.PHYSICS_SCORE: "Score Físico"
         })
         
         st.dataframe(df_table.style.format(precision=2), hide_index=True, width='stretch')
