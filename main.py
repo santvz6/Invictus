@@ -18,6 +18,7 @@ from src.water2fraud.models.trainer import (
     plot_training_history, 
 )
 
+from sklearn.model_selection import train_test_split
 from src.config import get_logger, Paths, DatasetKeys, AIConstants
 Paths.init_project()
 logger = get_logger(__name__)
@@ -155,12 +156,28 @@ class WaterApp:
             idx_cluster = metadata_df[DatasetKeys.CLUSTER] == cluster_id
             X_cluster = X_sequences[idx_cluster]
             
-            # Preparar DataLoader y Modelo
-            dataloader = get_dataloader(X_cluster, batch_size=batch_size, shuffle=True)
+            # Split de entrenamiento y validación (20% para validación)
+            X_train, X_val = train_test_split(
+                X_cluster, 
+                test_size=0.2, 
+                random_state=AIConstants.RANDOM_STATE
+            )
+            
+            # Preparar DataLoaders y Modelo
+            train_loader = get_dataloader(X_train, batch_size=batch_size, shuffle=True)
+            val_loader = get_dataloader(X_val, batch_size=batch_size, shuffle=False)
+            
             model = LSTMAutoencoder(num_features=num_features, hidden_dim=hidden_dim, latent_dim=latent_dim, seq_len=seq_len)
             
-            # Entrenar y almacenar
-            model, history = train_autoencoder(model, dataloader, epochs=epochs, lr=lr, device=device)
+            # Entrenar y almacenar (Pasamos ambos loaders)
+            model, history = train_autoencoder(
+                model, 
+                train_loader, 
+                val_loader=val_loader, 
+                epochs=epochs, 
+                lr=lr, 
+                device=device
+            )
             modelos[f"ae_cluster_{cluster_id}"] = model
             
             # Ploteamos si se solicitó en el Notebook
@@ -226,7 +243,7 @@ class WaterApp:
         return df_ae_resultados, umbrales
 
     @staticmethod
-    def _phase_5_risk_scoring(df_ae: pd.DataFrame, risk_score={"ae_weight": 0.75, "physics_weight": 0.25}) -> tuple[pd.DataFrame, object, list[str]]:
+    def _phase_5_risk_scoring(df_ae: pd.DataFrame, risk_score={"ae_weight": 0.6, "physics_weight": 0.4}) -> tuple[pd.DataFrame, object, list[str]]:
         """
         Cruza los errores de reconstrucción del Autoencoder (AE) con las predicciones
         físicas sobre los datos reales (no escalados) para generar una puntuación

@@ -38,16 +38,17 @@ class EarlyStopping:
                 self.early_stop = True
 
 
-def train_autoencoder(model: nn.Module, dataloader: DataLoader, epochs=100, lr=1e-3, 
-                      patience=15, device="cpu") -> tuple[nn.Module, dict]:
+def train_autoencoder(model: nn.Module, train_loader: DataLoader, val_loader: DataLoader = None, 
+                      epochs=100, lr=1e-3, patience=15, device="cpu") -> tuple[nn.Module, dict]:
     """
-    Bucle de entrenamiento estandarizado para el Autoencoder LSTM con Early Stopping.
+    Bucle de entrenamiento mejorado para el Autoencoder LSTM con Validación y Early Stopping.
 
     Args:
         model (nn.Module): Instancia de la red neuronal a entrenar.
-        dataloader (DataLoader): Iterador de PyTorch con los datos.
+        train_loader (DataLoader): Iterador para los datos de entrenamiento.
+        val_loader (DataLoader, optional): Iterador para los datos de validación.
         epochs (int): Número máximo de épocas.
-        lr (float): Tasa de aprendizaje (Learning Rate).
+        lr (float): Tasa de aprendizaje inicial.
         patience (int): Épocas de tolerancia para el Early Stopping.
         device (str): Dispositivo ('cpu' o 'cuda').
 
@@ -55,16 +56,22 @@ def train_autoencoder(model: nn.Module, dataloader: DataLoader, epochs=100, lr=1
         tuple: (Modelo entrenado con los mejores pesos, Diccionario con el historial de pérdidas)
     """
     model.to(device)
-    optimizer = torch.optim.Adam(model.parameters(), lr=lr)
+    # Cambiamos a AdamW para un mejor manejo del weight decay
+    optimizer = torch.optim.AdamW(model.parameters(), lr=lr, weight_decay=1e-5)
+    
+    # Scheduler para reducir el LR cuando la pérdida se estanca
+    scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', factor=0.5, patience=7)
+    
     criterion = nn.L1Loss() # MAE
     
     early_stopping = EarlyStopping(patience=patience)
-    history = {'loss': []}
+    history = {'loss': [], 'val_loss': []}
     
-    model.train()
     for epoch in range(epochs):
-        epoch_loss = 0
-        for batch_x, _ in dataloader:
+        # --- FASE DE ENTRENAMIENTO ---
+        model.train()
+        train_loss = 0
+        for batch_x, _ in train_loader:
             batch_x = batch_x.to(device)
             
             optimizer.zero_grad()
@@ -72,24 +79,45 @@ def train_autoencoder(model: nn.Module, dataloader: DataLoader, epochs=100, lr=1
             
             loss = criterion(reconstruction, batch_x)
             loss.backward()
+            
+            # Gradient Clipping para estabilizar LSTMs
+            torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
+            
             optimizer.step()
+            train_loss += loss.item()
             
-            epoch_loss += loss.item()
-            
-        avg_loss = epoch_loss / len(dataloader)
-        history['loss'].append(avg_loss)
+        avg_train_loss = train_loss / len(train_loader)
+        history['loss'].append(avg_train_loss)
         
-        # Comprobación de Early Stopping
-        early_stopping(avg_loss, model)
+        # --- FASE DE VALIDACIÓN ---
+        avg_val_loss = avg_train_loss
+        if val_loader is not None:
+            model.eval()
+            val_loss = 0
+            with torch.no_grad():
+                for batch_val, _ in val_loader:
+                    batch_val = batch_val.to(device)
+                    reconstruction = model(batch_val)
+                    loss = criterion(reconstruction, batch_val)
+                    val_loss += loss.item()
+            avg_val_loss = val_loss / len(val_loader)
+            
+        history['val_loss'].append(avg_val_loss)
+        
+        # Actualizamos el scheduler basado en la pérdida de validación
+        scheduler.step(avg_val_loss)
+        
+        # Comprobación de Early Stopping basada en validación
+        early_stopping(avg_val_loss, model)
         
         if (epoch + 1) % 10 == 0 or early_stopping.early_stop:
-            print(f"Epoch {epoch+1:03d}/{epochs} | Loss: {avg_loss:.5f}")
+            print(f"Epoch {epoch+1:03d}/{epochs} | Train Loss: {avg_train_loss:.5f} | Val Loss: {avg_val_loss:.5f} | LR: {optimizer.param_groups[0]['lr']:.6f}")
             
         if early_stopping.early_stop:
             print(f"  -> Early Stopping activado en la época {epoch+1}. Restaurando mejores pesos.")
             break
             
-    # Restauramos el modelo a su mejor estado antes del overfitting
+    # Restauramos el modelo a su mejor estado (lowest val loss)
     if early_stopping.best_model_weights is not None:
         model.load_state_dict(early_stopping.best_model_weights)
         

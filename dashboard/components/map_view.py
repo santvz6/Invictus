@@ -82,9 +82,48 @@ def _add_choropleth(m, gdf, df_barrio, feature_col, alert_col) -> bool:
             
     gdf_merged = gdf_merged[~gdf_merged["barrio_limpio"].isin(["ALICANTE", "ALACANT", "ALICANTE/ALACANT"])]
 
+    # --- CORRECCIÓN ESPACIAL DE NOMBRES (Búsqueda por Subcadena) ---
+    # Soluciona problemas de espacios invisibles, guiones y prefijos (ej: "EL ", "PDA. ")
+    MAPEO_GEOJSON_A_CSV = {
+        "RAVAL ROIG": "RAVAL ROIG -V. DEL SOCORRO",
+        "SOCORRO": "RAVAL ROIG -V. DEL SOCORRO",
+        "SAN FERNANDO": "SAN FERNANDO-PRIN. MERCEDES",
+        "PRINCESA MERCEDES": "SAN FERNANDO-PRIN. MERCEDES",
+        "ENSANCHE": "ENSANCHE DIPUTACION",
+        "DIPUTACION": "ENSANCHE DIPUTACION",
+        "IFNI": "SIDI IFNI - NOU ALACANT",
+        "NOU ALACANT": "SIDI IFNI - NOU ALACANT",
+        "BACAROT": "BACAROT",
+        "MORANT": "MORANT -SAN NICOLAS BARI",
+        "SAN NICOLAS": "MORANT -SAN NICOLAS BARI",
+
+        # No se puede mapear a GEOJSON:
+        # PALMERAL
+        # MORALET
+        # VALLONGA
+    }
+    
+    def normalize_name(text):
+        replacements = {"Á": "A", "É": "E", "Í": "I", "Ó": "O", "Ú": "U", "À": "A", "È": "E", "Ì": "I", "Ò": "O", "Ù": "U"}
+        t = str(text).upper().strip()
+        for a, b in replacements.items():
+            t = t.replace(a, b)
+        return t
+
+    gdf_merged["barrio_limpio"] = gdf_merged["barrio_limpio"].apply(
+        lambda x: next((val for key, val in MAPEO_GEOJSON_A_CSV.items() if key in normalize_name(x)), normalize_name(x))
+    )
+
     from src.config import DatasetKeys
     df_temp = df_barrio.copy()
     df_temp["barrio_limpio"] = df_temp[DatasetKeys.BARRIO].str.split("-", n=1).str[-1].str.strip().str.upper()
+
+    # --- DETECCIÓN DE BARRIOS FALTANTES (DEBUG VISUAL) ---
+    barrios_csv = set(df_temp["barrio_limpio"].unique())
+    barrios_geo = set(gdf_merged["barrio_limpio"].unique())
+    
+    # Comparamos qué barrios del CSV no tienen pareja en el GeoJSON (excluyendo "DISPERSOS")
+    barrios_faltantes = barrios_csv - barrios_geo - {"DISPERSOS", "DESCONOCIDO", ""}
 
     # FIX: Un inner merge asegura que eliminemos los polígonos que NO están en nuestros datos 
     # protegiendo los barrios que realmente utilizamos.
@@ -141,6 +180,34 @@ def _add_choropleth(m, gdf, df_barrio, feature_col, alert_col) -> bool:
         ),
         popup=folium.GeoJsonPopup(fields=["barrio_limpio"], aliases=["Barrio:"]),
     ).add_to(m)
+
+    # --- ALTERNATIVA HÍBRIDA: POLÍGONOS MANUALES PARA BARRIOS SIN GEOMETRÍA ---
+    if barrios_faltantes:
+        # Coordenadas GPS (lat, lon) de los vértices que forman la silueta de los distritos rurales
+        POLIGONOS_FALTANTES = {
+            "EL PALMERAL": [[38.3174, -0.5191], [38.3158, -0.5144], [38.3094, -0.5188], [38.3122, -0.5230]],
+            "MORALET": [[38.4550, -0.5820], [38.4410, -0.5560], [38.4230, -0.5620], [38.4280, -0.5950], [38.4480, -0.6050], [38.4550, -0.5820]],
+            "FONTCALENT": [[38.3780, -0.5950], [38.3580, -0.5720], [38.3450, -0.5880], [38.3620, -0.6120], [38.3780, -0.5950]],
+            "PDA VALLONGA": [[38.3520, -0.5480], [38.3380, -0.5380], [38.3280, -0.5550], [38.3420, -0.5680], [38.3520, -0.5480]]
+        }
+        
+        for barrio in barrios_faltantes:
+            if barrio in POLIGONOS_FALTANTES:
+                row_data = df_temp[df_temp["barrio_limpio"] == barrio]
+                if not row_data.empty:
+                    row = row_data.iloc[0]
+                    val = row.get(feature_col, 0)
+                    alertas = int(row.get(alert_col, 0))
+                    
+                    folium.Polygon(
+                        locations=POLIGONOS_FALTANTES[barrio],
+                        color="rgba(255, 255, 255, 0.4)", 
+                        weight=1, # Grosor fino para que no destaque agresivamente
+                        fill=True,
+                        fill_color=colormap(val),
+                        fill_opacity=0.75,
+                        tooltip=f"<b>{barrio} (Polígono)</b><br>{feature_col}: {val:.1f}<br>Riesgo Fraude: {row.get(DatasetKeys.FRAUD_RISK_SCORE, 0):.1f}%<br>Alertas Activas: {int(row.get(alert_col, 0))}",
+                    ).add_to(m)
 
     return True
 
@@ -212,7 +279,7 @@ def _add_heatmap_fallback(m, df_barrio, feature_col, alert_col):
             location=[lat, lon],
             radius=6,
             color="#c1121f" if anomalias > 0 else "#52b788",
-            fill=True, fill_opacity=0.8,
+            fill=True, fill_opacity=0.2,
             tooltip=f"<b>{barrio}</b><br>{feature_col}: {val:.1f}<br>Alertas: {anomalias}",
             popup=barrio,
         ).add_to(m)

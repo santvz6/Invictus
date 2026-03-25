@@ -26,13 +26,29 @@ class LSTMAutoencoder(nn.Module):
 
         # ENCODER
         self.encoder_lstm1 = nn.LSTM(num_features, hidden_dim, batch_first=True)
+        self.encoder_norm1 = nn.LayerNorm(hidden_dim)
         self.encoder_dropout = nn.Dropout(0.2)
         self.encoder_lstm2 = nn.LSTM(hidden_dim, latent_dim, batch_first=True)
+        self.encoder_norm2 = nn.LayerNorm(latent_dim)
 
         # DECODER
         self.decoder_lstm1 = nn.LSTM(latent_dim, hidden_dim, batch_first=True)
+        self.decoder_norm1 = nn.LayerNorm(hidden_dim)
         self.decoder_dropout = nn.Dropout(0.2)
         self.decoder_lstm2 = nn.LSTM(hidden_dim, num_features, batch_first=True)
+        
+        # Inicialización de pesos
+        self._init_weights()
+
+    def _init_weights(self):
+        """Aplica inicialización de Xavier/Kaiming a las capas LSTM."""
+        for name, param in self.named_parameters():
+            if 'weight_ih' in name:
+                nn.init.xavier_uniform_(param.data)
+            elif 'weight_hh' in name:
+                nn.init.orthogonal_(param.data)
+            elif 'bias' in name:
+                param.data.fill_(0)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         """
@@ -47,11 +63,13 @@ class LSTMAutoencoder(nn.Module):
         
         # --- Encode ---
         x, _ = self.encoder_lstm1(x)
+        x = self.encoder_norm1(x)
         x = self.encoder_dropout(x)
         _, (hidden, cell) = self.encoder_lstm2(x)
         
         # hidden shape: (1, batch_size, latent_dim) -> squeeze: (batch_size, latent_dim)
         latent = hidden[-1]
+        latent = self.encoder_norm2(latent)
 
         # --- Decode ---
         # Repetimos el vector latente a lo largo de los meses
@@ -59,6 +77,7 @@ class LSTMAutoencoder(nn.Module):
         x_decoded = latent.unsqueeze(1).repeat(1, self.seq_len, 1)
         
         x_decoded, _ = self.decoder_lstm1(x_decoded)
+        x_decoded = self.decoder_norm1(x_decoded)
         x_decoded = self.decoder_dropout(x_decoded)
         reconstruction, _ = self.decoder_lstm2(x_decoded)
         
