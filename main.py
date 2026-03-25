@@ -395,7 +395,12 @@ class WaterApp:
         # 6. Dataset Completo (Para Científicos de Datos)
         df_resultados.to_csv(folder_path / "06_resultados_completos_tecnicos.csv", index=False)
 
-        # 7. Guardar Modelos y Artefactos (Caché Dashboard)
+        # 7. Resumen de Scores (Solo Barrio, Fecha y Puntuaciones clave)
+        score_cols = [DatasetKeys.BARRIO, DatasetKeys.FECHA, DatasetKeys.AE_SCORE_WEIGHTED, DatasetKeys.PHYSICS_SCORE, DatasetKeys.FRAUD_RISK_SCORE]
+        df_scores = df_resultados[[c for c in score_cols if c in df_resultados.columns]]
+        df_scores.to_csv(folder_path / "07_resumen_scores.csv", index=False)
+
+        # 8. Guardar Modelos y Artefactos (Caché Dashboard)
         cluster_manager.save(folder_path / "ts_kmeans_model.joblib")
         for name, model in modelos.items():
             torch.save(model.state_dict(), folder_path / f"{name}.pth")
@@ -425,15 +430,19 @@ class WaterApp:
     @staticmethod
     def _generate_markdown_report(df_alertas: pd.DataFrame, folder_path: Path) -> None:
         report_path = folder_path / "REPORTE_ANALISIS.md"
+        
+        # Filtramos barrios dispersos del reporte visual pero se mantienen en los datos técnicos
+        df_reporte = df_alertas[~df_alertas[DatasetKeys.BARRIO].str.contains("DISPERSOS", case=False, na=False)].copy()
+        
         from datetime import datetime
         with open(report_path, "w", encoding="utf-8") as f:
             f.write("# 🏛️ REPORTE EJECUTIVO: Auditoría de Viviendas Turísticas\n\n")
             f.write(f"**Fecha:** {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
-            f.write(f"**Alertas totales:** {len(df_alertas)}\n\n")
+            f.write(f"**Alertas totales:** {len(df_reporte)}\n\n")
             f.write("## 📌 Top 10 Alertas de Fraude\n\n")
             f.write("| Barrio | Uso | Fecha | Riesgo (%) | Nivel | Motivo |\n")
             f.write("| :--- | :--- | :--- | :--- | :--- | :--- |\n")
-            for _, row in df_alertas.head(10).iterrows():
+            for _, row in df_reporte.head(10).iterrows():
                 f.write(f"| {row[DatasetKeys.BARRIO]} | {row[DatasetKeys.USO]} | {row[DatasetKeys.FECHA]} | ")
                 f.write(f"{row[DatasetKeys.FRAUD_RISK_SCORE]:.1f}% | {row[DatasetKeys.NIVEL_RIESGO]} | {row[DatasetKeys.MOTIVO]} |\n")
             f.write("\n\n---\n*Generado por Invictus Analytics Engine*")
