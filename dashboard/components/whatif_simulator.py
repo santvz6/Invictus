@@ -241,7 +241,12 @@ def render_whatif(df: pd.DataFrame, barrio: str | None = None):
             val = ((np.cos(2 * np.pi * meses / 12) + 1) / 2).values.reshape(-1, 1)
             seq_scaled.append(val)
         elif col in scalers and col in df_sim.columns:
-            val = scalers[col].transform(df_sim[[col]])
+            # Aplicar log1p ANTES de transformar si el escalador fue entrenado así (RobustScaler en Ratio)
+            val_to_scale = df_sim[[col]]
+            if col == DatasetKeys.CONSUMO_RATIO:
+                val_to_scale = np.log1p(val_to_scale)
+                
+            val = scalers[col].transform(val_to_scale)
             seq_scaled.append(val)
         else:
             # Relleno de seguridad para mantener la dimensión (no debería ocurrir en core features)
@@ -262,7 +267,9 @@ def render_whatif(df: pd.DataFrame, barrio: str | None = None):
         if DatasetKeys.CONSUMO_RATIO in feature_cols:
             idx_ratio = feature_cols.index(DatasetKeys.CONSUMO_RATIO)
             reconst_ratio_scaled = reconst[:, idx_ratio].reshape(-1, 1)
-            consumo_ae_sim = scalers[DatasetKeys.CONSUMO_RATIO].inverse_transform(reconst_ratio_scaled).flatten()
+            consumo_ae_log = scalers[DatasetKeys.CONSUMO_RATIO].inverse_transform(reconst_ratio_scaled).flatten()
+            # Invertir log1p, asegurar no negatividad y evitar overflow (clip a 20)
+            consumo_ae_sim = np.maximum(0, np.expm1(np.clip(consumo_ae_log, -np.inf, 20)))
         else:
             consumo_ae_sim = df_sim[DatasetKeys.CONSUMO_RATIO].values
             

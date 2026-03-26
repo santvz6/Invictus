@@ -134,6 +134,10 @@ class WaterPreprocessor:
             if col in df.columns:
                 if scale_type == WaterPreprocessor.ROBUST:
                     scaler = RobustScaler()
+                    
+                    # Aplicar logaritmo natural a la variable de consumo
+                    df[col] = np.log1p(df[col])
+                    
                     df[col] = scaler.fit_transform(df[[col]])
                     scalers[col] = scaler
                 elif scale_type == WaterPreprocessor.MIN_MAX:

@@ -6,6 +6,7 @@ Muestra KPIs, gráfico comparativo Real vs Esperado y listado de anomalías.
 """
 
 import pandas as pd
+import numpy as np
 import streamlit as st
 import plotly.graph_objects as go
 import torch
@@ -65,12 +66,18 @@ def _get_ae_reconstruction(df_full: pd.DataFrame, df_b: pd.DataFrame, barrio: st
         
         idx_ratio = feature_cols.index(DatasetKeys.CONSUMO_RATIO)
         
-        # FIX: The model trained with RobustScaler fitted on the ENTIRE unscaled dataset
-        from sklearn.preprocessing import RobustScaler
-        if not Paths.PROC_CSV_AMAEM_NOT_SCALED.exists(): return None
-        df_raw_all = pd.read_csv(Paths.PROC_CSV_AMAEM_NOT_SCALED)
-        robust_scaler = RobustScaler()
-        robust_scaler.fit(df_raw_all[[DatasetKeys.CONSUMO_RATIO]])
+        # Cargar los escaladores originales usados durante el entrenamiento
+        import joblib
+        scalers_path = latest_exp / "scalers.joblib"
+        if not scalers_path.exists(): 
+            print(f"No se encontró scalers.joblib en {latest_exp}")
+            return None
+            
+        all_scalers = joblib.load(scalers_path)
+        robust_scaler = all_scalers.get(DatasetKeys.CONSUMO_RATIO)
+        if robust_scaler is None: 
+            print(f"No se encontró el escalador para {DatasetKeys.CONSUMO_RATIO} en scalers.joblib")
+            return None
 
         
         fechas_reconst = []
@@ -86,12 +93,16 @@ def _get_ae_reconstruction(df_full: pd.DataFrame, df_b: pd.DataFrame, barrio: st
                 if i == 0:
                     for j in range(seq_len):
                         val_sc = reconstruction[j, idx_ratio]
-                        val_orig = robust_scaler.inverse_transform([[val_sc]])[0, 0]
+                        val_log = robust_scaler.inverse_transform([[val_sc]])[0, 0]
+                        # Invertir log1p, asegurar no negatividad y evitar overflow (clip a 20)
+                        val_orig = np.maximum(0, np.expm1(np.clip(val_log, -np.inf, 20)))
                         valores_reconst.append(val_orig)
                         fechas_reconst.append(fechas_data[i + j])
                 else:
                     val_sc = reconstruction[-1, idx_ratio]
-                    val_orig = robust_scaler.inverse_transform([[val_sc]])[0, 0]
+                    val_log = robust_scaler.inverse_transform([[val_sc]])[0, 0]
+                    # Invertir log1p, asegurar no negatividad y evitar overflow (clip a 20)
+                    val_orig = np.maximum(0, np.expm1(np.clip(val_log, -np.inf, 20)))
                     valores_reconst.append(val_orig)
                     fechas_reconst.append(fechas_data[i + seq_len - 1])
                     
