@@ -80,8 +80,10 @@ def _get_ae_reconstruction(df_full: pd.DataFrame, df_b: pd.DataFrame, barrio: st
             return None
 
         
-        fechas_reconst = []
-        valores_reconst = []
+        # Lógica de Reconstrucción Superior: Promediado de ventanas solapadas
+        # Para cada mes, sumamos todas las predicciones que caen en él y luego dividimos.
+        # Esto da mucha más estabilidad y rigor matemático que tomar solo el último punto.
+        reconst_accumulator = {} # {fecha: [valores_escalados]}
         
         with torch.no_grad():
             for i in range(len(group_data) - seq_len + 1):
@@ -89,22 +91,29 @@ def _get_ae_reconstruction(df_full: pd.DataFrame, df_b: pd.DataFrame, barrio: st
                 seq_tensor = torch.tensor(seq, dtype=torch.float32).unsqueeze(0)
                 reconstruction = model(seq_tensor).squeeze(0).numpy()
                 
-                # Igual que el NoteBook: Reconstruimos la curva
-                if i == 0:
-                    for j in range(seq_len):
-                        val_sc = reconstruction[j, idx_ratio]
-                        val_log = robust_scaler.inverse_transform([[val_sc]])[0, 0]
-                        # Invertir log1p, asegurar no negatividad y evitar overflow (clip a 20)
-                        val_orig = np.maximum(0, np.expm1(np.clip(val_log, -np.inf, 20)))
-                        valores_reconst.append(val_orig)
-                        fechas_reconst.append(fechas_data[i + j])
-                else:
-                    val_sc = reconstruction[-1, idx_ratio]
-                    val_log = robust_scaler.inverse_transform([[val_sc]])[0, 0]
-                    # Invertir log1p, asegurar no negatividad y evitar overflow (clip a 20)
-                    val_orig = np.maximum(0, np.expm1(np.clip(val_log, -np.inf, 20)))
-                    valores_reconst.append(val_orig)
-                    fechas_reconst.append(fechas_data[i + seq_len - 1])
+                for j in range(seq_len):
+                    fecha_actual = fechas_data[i + j]
+                    val_sc = reconstruction[j, idx_ratio]
+                    if fecha_actual not in reconst_accumulator:
+                        reconst_accumulator[fecha_actual] = []
+                    reconst_accumulator[fecha_actual].append(val_sc)
+
+        # Generar DataFrame final aplicando transformaciones inversas sobre el promedio
+        fechas_reconst = []
+        valores_reconst = []
+        
+        for fecha in sorted(reconst_accumulator.keys()):
+            # 1. Promedio en espacio escalado
+            mean_sc = np.mean(reconst_accumulator[fecha])
+            
+            # 2. Desescalar a espacio logarítmico
+            val_log = robust_scaler.inverse_transform([[mean_sc]])[0, 0]
+            
+            # 3. Invertir log1p, asegurar no negatividad y evitar overflow (clip a 20)
+            val_orig = np.maximum(0, np.expm1(np.clip(val_log, -np.inf, 20)))
+            
+            fechas_reconst.append(fecha)
+            valores_reconst.append(val_orig)
                     
         return pd.DataFrame({DatasetKeys.FECHA: fechas_reconst, "ae_reconstruction": valores_reconst})
     except Exception as e:
