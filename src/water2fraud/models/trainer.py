@@ -39,7 +39,7 @@ class EarlyStopping:
 
 
 def train_autoencoder(model: nn.Module, train_loader: DataLoader, val_loader: DataLoader = None, 
-                      epochs=100, lr=1e-3, patience=15, device="cpu") -> tuple[nn.Module, dict]:
+                      epochs=100, lr=1e-3, weight_decay=1e-5, patience=15, device="cpu") -> tuple[nn.Module, dict]:
     """
     Bucle de entrenamiento mejorado para el Autoencoder LSTM con Validación y Early Stopping.
 
@@ -49,6 +49,7 @@ def train_autoencoder(model: nn.Module, train_loader: DataLoader, val_loader: Da
         val_loader (DataLoader, optional): Iterador para los datos de validación.
         epochs (int): Número máximo de épocas.
         lr (float): Tasa de aprendizaje inicial.
+        weight_decay (float): Término de regularización L2.
         patience (int): Épocas de tolerancia para el Early Stopping.
         device (str): Dispositivo ('cpu' o 'cuda').
 
@@ -57,7 +58,7 @@ def train_autoencoder(model: nn.Module, train_loader: DataLoader, val_loader: Da
     """
     model.to(device)
     # Cambiamos a AdamW para un mejor manejo del weight decay
-    optimizer = torch.optim.AdamW(model.parameters(), lr=lr, weight_decay=1e-5)
+    optimizer = torch.optim.AdamW(model.parameters(), lr=lr, weight_decay=weight_decay)
     
     # Scheduler para reducir el LR cuando la pérdida se estanca
     scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', factor=0.5, patience=7)
@@ -150,6 +151,7 @@ def detect_ae_anomalies(model: nn.Module, X_sequences: np.ndarray, metadata_df: 
     
     with torch.no_grad():
         reconstructions = model(X_tensor)
+        
         
     # 1. ERROR GLOBAL
     # Calculamos el MAE (Mean Absolute Error) promediando la secuencia (dim=1) y las features (dim=2)

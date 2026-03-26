@@ -23,6 +23,9 @@ class LSTMAutoencoder(nn.Module):
         super(LSTMAutoencoder, self).__init__()
         self.seq_len = seq_len
         self.num_features = num_features
+        self.hidden_dim = hidden_dim
+        self.latent_dim = latent_dim
+
 
         # ENCODER
         self.encoder_lstm1 = nn.LSTM(num_features, hidden_dim, batch_first=True)

@@ -136,12 +136,13 @@ class WaterApp:
         logger.info("--- FASE 3: Entrenamiento de Modelos LSTM-AE ---")
         
         # Kwargs
-        batch_size  = kwargs.get("batch_size", 64)
-        hidden_dim  = kwargs.get("hidden_dim", 128)
-        latent_dim  = kwargs.get("latent_dim", 16)
-        epochs      = kwargs.get("epochs", 150)
-        lr          = kwargs.get("lr", 1e-3)
-        plot_graphs = kwargs.get("plot", False)
+        batch_size   = kwargs.get("batch_size", 32)
+        hidden_dim   = kwargs.get("hidden_dim", 128)
+        latent_dim   = kwargs.get("latent_dim", 32)
+        epochs       = kwargs.get("epochs", 170)
+        lr           = kwargs.get("lr", 5e-4)
+        weight_decay = kwargs.get("weight_decay", 1e-4) 
+        plot_graphs  = kwargs.get("plot", False)
           
 
         modelos = {}
@@ -176,6 +177,7 @@ class WaterApp:
                 val_loader=val_loader, 
                 epochs=epochs, 
                 lr=lr, 
+                weight_decay=weight_decay,
                 device=device
             )
             modelos[f"ae_cluster_{cluster_id}"] = model
@@ -235,6 +237,7 @@ class WaterApp:
             df_anomalias, umbral = detect_ae_anomalies(model, X_cluster, meta_cluster, 
                                                feature_names=feature_names, device=device,
                                                feature_weights=feature_weights)
+            
             resultados_finales.append(df_anomalias) 
             umbrales[str(cluster_id)] = umbral
             
@@ -243,7 +246,7 @@ class WaterApp:
         return df_ae_resultados, umbrales
 
     @staticmethod
-    def _phase_5_risk_scoring(df_ae: pd.DataFrame, risk_score={"ae_weight": 0.6, "physics_weight": 0.4}) -> tuple[pd.DataFrame, object, list[str]]:
+    def _phase_5_risk_scoring(df_ae: pd.DataFrame, risk_score={"ae_weight": 0.2, "physics_weight": 0.8}) -> tuple[pd.DataFrame, object, list[str]]:
         """
         Cruza los errores de reconstrucción del Autoencoder (AE) con las predicciones
         físicas sobre los datos reales (no escalados) para generar una puntuación
@@ -350,7 +353,8 @@ class WaterApp:
         return pd.read_csv(input_path)
 
     @staticmethod
-    def _save_results(df_resultados: pd.DataFrame, cluster_manager: ClusterManager, modelos: dict, scalers: dict, rf_model: object, rf_features: list, umbrales: dict) -> None:
+    def _save_results(df_resultados: pd.DataFrame, cluster_manager: ClusterManager, modelos: dict, 
+                      scalers: dict, rf_model: object, rf_features: list, umbrales: dict) -> None:
         """
         Persiste los resultados de la detección y los modelos entrenados.
         """
@@ -403,8 +407,15 @@ class WaterApp:
         # 8. Guardar Modelos y Artefactos (Caché Dashboard)
         cluster_manager.save(folder_path / "ts_kmeans_model.joblib")
         for name, model in modelos.items():
-            torch.save(model.state_dict(), folder_path / f"{name}.pth")
-            
+            checkpoint = {
+                "state_dict": model.state_dict(),
+                "num_features": model.num_features,
+                "hidden_dim": model.hidden_dim,
+                "latent_dim": model.latent_dim,
+                "seq_len": model.seq_len
+            }
+            torch.save(checkpoint, folder_path / f"{name}.pth")
+
         joblib.dump(scalers, folder_path / "scalers.joblib")
         joblib.dump(rf_model, folder_path / "rf_model.joblib")
         
@@ -414,7 +425,8 @@ class WaterApp:
         with open(folder_path / "thresholds.json", "w") as f:
             json.dump(umbrales, f)
 
-        # 4. Generar Reporte Markdown Profesional
+
+        # 9. Generar Reporte Markdown Profesional
         WaterApp._generate_markdown_report(df_alertas, folder_path)
 
         print(f"\n{'='*60}")

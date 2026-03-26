@@ -26,16 +26,16 @@ class DatasetKeys:
     RESIDUO                 = "residuo"
     NDVI_SATELITE           = "ndvi_satelite"
     
+    # --- Factores Meteorológicos (AEMET) ---
+    TEMP_MEDIA              = "temperatura_media"
+    PRECIPITACION           = "precipitacion"
+
     # --- Datos de Turismo y Vivienda (INE) ---
     NUM_VT_BARRIO_INE       = "num_vt_barrio"
     PCT_VT_BARRIO_INE       = "porcentaje_vt_barrio %"
     OCUP_VT_PROV_INE        = "ocupaciones_vt_prov"
     PERNOCT_VT_PROV_INE     = "pernoctaciones_vt_prov"
-
-
-    # --- Factores Meteorológicos (AEMET) ---
-    TEMP_MEDIA              = "temperatura_media"
-    PRECIPITACION           = "precipitacion"
+    
 
     # --- Datos de Turismo y Vivienda (GVA) ---
     NUM_VT_BARRIO_GVA       = "num_viviendas_barrio_gva"

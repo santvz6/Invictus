@@ -54,11 +54,15 @@ def get_simulation_context():
     for model_path in latest_exp.glob("ae_cluster_*.pth"):
         cluster_id = model_path.stem.split("_")[-1]
         
-        model_ae = LSTMAutoencoder(num_features=len(feature_cols), hidden_dim=128, latent_dim=16, seq_len=12)
-        try:
-            model_ae.load_state_dict(torch.load(model_path, map_location="cpu", weights_only=True))
-        except TypeError:
-            model_ae.load_state_dict(torch.load(model_path, map_location="cpu"))
+        checkpoint = torch.load(model_path, map_location="cpu", weights_only=False)
+        
+        model_ae = LSTMAutoencoder(
+            num_features=checkpoint["num_features"],
+            hidden_dim=checkpoint["hidden_dim"],
+            latent_dim=checkpoint["latent_dim"],
+            seq_len=checkpoint["seq_len"]
+        )
+        model_ae.load_state_dict(checkpoint["state_dict"])
         model_ae.eval()
         
         lstm_models[int(cluster_id)] = model_ae

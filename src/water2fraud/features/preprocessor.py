@@ -44,8 +44,8 @@ class WaterPreprocessor:
         DatasetKeys.MES_COS: SIN_COS,
 
         # INE - TOURISM
-        # DatasetKeys.NUM_VT_BARRIO_INE: MIN_MAX,           # Eliminado por redundancia con el %
-        DatasetKeys.PCT_VT_BARRIO_INE: MIN_MAX,
+        # DatasetKeys.NUM_VT_BARRIO_INE: MIN_MAX,           # Eliminado por redundancia con el PCT_VT_SIN_REGISTRAR
+        # DatasetKeys.PCT_VT_BARRIO_INE: MIN_MAX,           # Eliminado por redundancia con el PCT_VT_SIN_REGISTRAR
         # DatasetKeys.OCUP_VT_PROV_INE: MIN_MAX,            # Eliminado (información por Provincias)
         # DatasetKeys.PERNOCT_VT_PROV_INE: MIN_MAX,         # Eliminado (información por Provincias)
 
@@ -57,17 +57,16 @@ class WaterPreprocessor:
         DatasetKeys.NDVI_SATELITE: MIN_MAX,
         
         # GVA
-        # DatasetKeys.NUM_VT_BARRIO_GVA: MIN_MAX,           # Eliminado por redundancia con el %
-        # DatasetKeys.PLAZAS_VIVIENDAS_GVA: MIN_MAX,        # Eliminado por redundancia con el %
+        # DatasetKeys.NUM_VT_BARRIO_GVA: MIN_MAX,           # Eliminado por redundancia con el PCT_VT_SIN_REGISTRAR
+        # DatasetKeys.PLAZAS_VIVIENDAS_GVA: MIN_MAX,        # Eliminado por redundancia con el PCT_VT_SIN_REGISTRAR
         # DatasetKeys.NUM_HOTELES_BARRIO_GVA: MIN_MAX,      # Optamos por utilizar Plazas Hoteles
         DatasetKeys.PLAZAS_HOTELES_BARRIO_GVA: MIN_MAX,
         
         # FESTIVOS
-        
 
         # ENGINEERED FEATURES
-        # DatasetKeys.NUM_VT_SIN_REGISTRAR: MIN_MAX,        # Eliminado por redundancia con el %
-        DatasetKeys.PCT_VT_SIN_REGISTRAR: ROBUST
+        # DatasetKeys.NUM_VT_SIN_REGISTRAR: MIN_MAX,         # Eliminado por redundancia con el PCT_VT_SIN_REGISTRAR
+        # DatasetKeys.PCT_VT_SIN_REGISTRAR: ROBUST           # Eliminado porque no es feature de predicción
     }
 
     @staticmethod

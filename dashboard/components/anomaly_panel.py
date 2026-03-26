@@ -52,11 +52,15 @@ def _get_ae_reconstruction(df_full: pd.DataFrame, df_b: pd.DataFrame, barrio: st
         fechas_data = df_b_sc[DatasetKeys.FECHA].values
         if len(group_data) < seq_len: return None
         
-        model = LSTMAutoencoder(num_features=len(feature_cols), hidden_dim=128, latent_dim=16, seq_len=seq_len)
-        try:
-            model.load_state_dict(torch.load(model_path, map_location="cpu", weights_only=True))
-        except TypeError: # Retrocompatibilidad con PyTorch antiguo
-            model.load_state_dict(torch.load(model_path, map_location="cpu"))
+        checkpoint = torch.load(model_path, map_location="cpu", weights_only=False)
+        
+        model = LSTMAutoencoder(
+            num_features=checkpoint["num_features"],
+            hidden_dim=checkpoint["hidden_dim"],
+            latent_dim=checkpoint["latent_dim"],
+            seq_len=checkpoint["seq_len"]
+        )
+        model.load_state_dict(checkpoint["state_dict"])
         model.eval()
         
         idx_ratio = feature_cols.index(DatasetKeys.CONSUMO_RATIO)
