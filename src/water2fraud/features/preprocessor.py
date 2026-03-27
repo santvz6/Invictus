@@ -65,7 +65,6 @@ class WaterPreprocessor:
         
         # FESTIVOS
         #DatasetKeys.DIAS_FESTIVOS: MIN_MAX,                # ! Eliminado porque no es feature de predicción
-        #DatasetKeys.PCT_FESTIVOS: MIN_MAX,                 # ! Eliminado porque no es feature de predicción
 
         # ENGINEERED FEATURES
         # DatasetKeys.NUM_VT_SIN_REGISTRAR: MIN_MAX,         # Eliminado por redundancia con el PCT_VT_SIN_REGISTRAR

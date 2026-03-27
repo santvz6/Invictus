@@ -10,7 +10,7 @@ import requests
 import pandas as pd
 import streamlit as st
 
-from src.config import DatasetKeys
+from src.config import DatasetKeys, AIConstants
 
 # Informe de ejemplo hardcodeado por barrio (mock)
 _INFORMES_MOCK = {
@@ -96,7 +96,7 @@ def _build_dynamic_prompt(barrio: str, df: pd.DataFrame) -> str:
         f"  - Consumo Real: {consumo_real:,.0f} m3 | Físico Esperado: {consumo_esperado:,.0f} m3\n"
         f"  - Desvío Total: {consumo_real - consumo_esperado:,.0f} m3 (Pico detectado en: {mes_pico})\n"
         f"  - Alertas de Fraude IA (Meses): {int(alertas)}\n\n"
-        f"**Instrucciones**: NO inventes datos. Usa MÁXIMO 3 PÁRRAFOS CORTOS y directos en formato Markdown:\n"
+        f"**Instrucciones**: NO inventes datos. Usa MÁXIMO 3 PÁRRAFOS en formato Markdown.\n"
     )
     return contexto
 
@@ -126,7 +126,7 @@ def render_llm_report(barrio: str | None = None, df: pd.DataFrame = None):
 
     # Contexto que se enviaría al LLM (visible para el usuario)
     with st.expander("Contexto enviado al LLM (debug)", expanded=False):
-        st.code(prompt_text, language="markdown")
+        st.code("\n" + prompt_text, language="markdown")
 
     # ── Botón de generación ─────────────────────────────────────────────
     btn_key = f"llm_btn_{barrio}"
@@ -142,7 +142,7 @@ def render_llm_report(barrio: str | None = None, df: pd.DataFrame = None):
             try:
                 response = requests.post(
                     "http://127.0.0.1:11434/api/generate",
-                    json={"model": "llama3.2", "prompt": prompt_text, "stream": False},
+                    json={"model": AIConstants.LLM_MODEL, "prompt": prompt_text, "stream": False},
                     timeout=90
                 )
                 if response.status_code == 200:
@@ -176,7 +176,7 @@ def render_llm_report(barrio: str | None = None, df: pd.DataFrame = None):
                 font-family: 'Inter', sans-serif;
                 line-height: 1.7;
                 backdrop-filter: blur(6px);
-            ">{informe}</div>""",
+            ">\n\n{informe}\n\n</div>""",
             unsafe_allow_html=True,
         )
 
