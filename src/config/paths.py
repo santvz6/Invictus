@@ -36,6 +36,7 @@ class Paths:
     # --- Archivos CSV Crudos --- #
     RAW_CSV_AMAEM = AMAEM_CSV_DIR / "AMAEM-2022-2024.csv"
     RAW_CSV_TELELECTURA = AMAEM_CSV_DIR / "contadores-telelectura-instalados.csv"
+    RAW_CSV_FESTIVOS = DATA_DIR / "festivos" / "festivos-barrios-alicante.csv"
 
     # --- Archivos JSON Crudos (Infraestructura) --- #
     RAW_JSON_BOCAS_HIDRANTES         = AMAEM_JSON_DIR / "bocas-de-hidrantes.json"
@@ -60,6 +61,7 @@ class Paths:
     PROC_CSV_STEP_GVA       = PROC_DIR / "step_gva.csv"
     PROC_CSV_STEP_AEMET     = PROC_DIR / "step_aemet.csv"
     PROC_CSV_STEP_SENTINEL  = PROC_DIR / "step_sentinel.csv"
+    PROC_CSV_STEP_FESTIVOS  = PROC_DIR / "step_festivos.csv"
 
     PROC_CSV_AMAEM_FISICOS    = PROC_DIR / "AMAEM-2022-2024_fisicos.csv"
     PROC_CSV_AMAEM_SCALED     = PROC_DIR / "AMAEM-2022-2024_scaled.csv"

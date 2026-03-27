@@ -214,8 +214,8 @@ class WaterApp:
 
         # Ponderación para el error de reconstrucción (haciéndolo escalable)
         feature_weights = {
-            DatasetKeys.CONSUMO_RATIO: 0.70,
-            DatasetKeys.PCT_VT_SIN_REGISTRAR: 0.30
+            DatasetKeys.CONSUMO_RATIO: 1.0,
+            # * Escalable en un futuro
         }
 
         for cluster_id in sorted(clusters_unicos):

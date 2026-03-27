@@ -63,6 +63,10 @@ class DatasetKeys:
     AE_SCORE_WEIGHTED       = "ae_score_weighted"
     PHYSICS_SCORE           = "physics_score"   # Escala 0-100 (100 = Umbral de Alerta)
     
+    # --- Factores Sociales y de Calendario (Festivos) ---
+    DIAS_FESTIVOS           = "dias_festivos"
+    PCT_FESTIVOS            = "porcentaje_anual_festivos"
+
     # --- Campos para generación de Reportes Finales ---
     NIVEL_RIESGO            = "nivel_riesgo"
     MOTIVO                  = "motivo"

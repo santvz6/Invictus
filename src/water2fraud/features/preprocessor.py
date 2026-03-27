@@ -16,6 +16,7 @@ from src.water2fraud.features.fisicos_processor import FisicosProcessor
 from src.water2fraud.features.aemet_processor import AEMETProcessor
 from src.water2fraud.features.amaem_processor import AMAEMProcessor
 from src.water2fraud.features.gva_processor import GVAProcessor
+from src.water2fraud.features.holiday_barrio_processor import HolidayBarrioProcessor
 from src.config import get_logger, DatasetKeys, Paths
 
 # Logger central del pipeline de características
@@ -63,10 +64,12 @@ class WaterPreprocessor:
         DatasetKeys.PLAZAS_HOTELES_BARRIO_GVA: MIN_MAX,
         
         # FESTIVOS
+        #DatasetKeys.DIAS_FESTIVOS: MIN_MAX,                # ! Eliminado porque no es feature de predicción
+        #DatasetKeys.PCT_FESTIVOS: MIN_MAX,                 # ! Eliminado porque no es feature de predicción
 
         # ENGINEERED FEATURES
         # DatasetKeys.NUM_VT_SIN_REGISTRAR: MIN_MAX,         # Eliminado por redundancia con el PCT_VT_SIN_REGISTRAR
-        # DatasetKeys.PCT_VT_SIN_REGISTRAR: ROBUST           # Eliminado porque no es feature de predicción
+        # DatasetKeys.PCT_VT_SIN_REGISTRAR: ROBUST           # ! Eliminado porque no es feature de predicción
     }
 
     @staticmethod
@@ -226,8 +229,11 @@ class WaterPreprocessor:
         # Fase C: Enriquecimiento Ambiental (AEMET y Sentinel)
         df_not_scaled = AEMETProcessor.process(df_not_scaled)
         df_not_scaled = SentinelProcessor.process(df_not_scaled)
+        
+        # Fase D: Enriquecimiento de Festivos
+        df_not_scaled = HolidayBarrioProcessor.process(df_not_scaled)
 
-        # Fase D: Ingeniería de Variables de Fraude (Gap de Ilegalidad)
+        # Fase E: Ingeniería de Variables de Fraude (Gap de Ilegalidad)
         df_not_scaled = WaterPreprocessor._engineer_features(df_not_scaled)
 
         # Fase E: Normalización para Deep Learning
