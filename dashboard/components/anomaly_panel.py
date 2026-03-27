@@ -129,14 +129,14 @@ def render_anomaly_panel(df: pd.DataFrame, barrio: str):
     
     alert_filter_label = st.radio(
         "Filtro de anomalías en gráficas:",
-        ["Riesgo de Fraude (Global)", "Anomalías IA (Autoencoder)", "Anomalías Físicas (Fourier)"],
+        ["Riesgo de Fraude", "Perfil de Consumo (IA)", "Inconsistencia Física (Fourier)"],
         index=0,
         key=f"alert_radio_{barrio}",
     )
     alert_col_map = {
-        "Riesgo de Fraude (Global)": DatasetKeys.ALERTA_TURISTICA_ILEGAL,
-        "Anomalías IA (Autoencoder)": DatasetKeys.IS_WEIGHTED_ANOMALY,
-        "Anomalías Físicas (Fourier)": DatasetKeys.IS_PHYSICS_ANOMALY
+        "Riesgo de Fraude": DatasetKeys.ALERTA_TURISTICA_ILEGAL,
+        "Perfil de Consumo (IA)": DatasetKeys.IS_WEIGHTED_ANOMALY,
+        "Inconsistencia Física (Fourier)": DatasetKeys.IS_PHYSICS_ANOMALY
     }
     alert_col = alert_col_map[alert_filter_label]
     
@@ -242,30 +242,54 @@ def render_anomaly_panel(df: pd.DataFrame, barrio: str):
     if alert_col in df_monthly.columns:
         df_anomalias = df_monthly[df_monthly[alert_col] > 0]
         if not df_anomalias.empty:
-            df_exceso = df_anomalias[df_anomalias["ratio_real"] > df_anomalias["ratio_esperado"]]
-            df_defecto = df_anomalias[df_anomalias["ratio_real"] <= df_anomalias["ratio_esperado"]]
+            # Caso A: Anomalías de Perfil IA (Siempre Naranja, sin importar el signo)
+            if alert_filter_label == "Perfil de Consumo (IA)":
+                fig.add_trace(go.Scatter(
+                    x=df_anomalias[DatasetKeys.FECHA], 
+                    y=df_anomalias["ratio_real"],
+                    mode='markers', 
+                    name='Anomalía de Perfil (IA)',
+                    marker=dict(color='#fca311', size=9, symbol='diamond', line=dict(width=1, color='#ffffff')),
+                    hovertext=df_anomalias[DatasetKeys.AE_SCORE_WEIGHTED].apply(lambda x: f"Score IA: {x:.1f}%") if DatasetKeys.AE_SCORE_WEIGHTED in df_anomalias.columns else None,
+                    hoverinfo="text+x+y"
+                ))
             
-            if not df_exceso.empty:
+            # Caso B: Riesgo de Fraude (Específicamente Rojo)
+            elif alert_filter_label == "Riesgo de Fraude":
                 fig.add_trace(go.Scatter(
-                    x=df_exceso[DatasetKeys.FECHA], 
-                    y=df_exceso["ratio_real"],
+                    x=df_anomalias[DatasetKeys.FECHA], 
+                    y=df_anomalias["ratio_real"],
                     mode='markers', 
-                    name='Anomalía (Exceso)',
-                    marker=dict(color='#ff4b4b', size=8, symbol='x', line=dict(width=0.6, color='#ff4b4b')),
-                    hovertext=df_exceso[DatasetKeys.FRAUD_RISK_SCORE].apply(lambda x: f"Riesgo Fraude: {x:.1f}%") if DatasetKeys.FRAUD_RISK_SCORE in df_exceso.columns else None,
+                    name='Riesgo de Fraude',
+                    marker=dict(color='#ff4b4b', size=10, symbol='x', line=dict(width=1, color='#ff4b4b')),
+                    hovertext=df_anomalias[DatasetKeys.FRAUD_RISK_SCORE].apply(lambda x: f"Riesgo: {x:.1f}%") if DatasetKeys.FRAUD_RISK_SCORE in df_anomalias.columns else None,
                     hoverinfo="text+x+y"
                 ))
+
+            # Caso C: Otros (Física/General) con lógica de Exceso/Defecto original
+            else:
+                df_exceso = df_anomalias[df_anomalias["ratio_real"] > df_anomalias["ratio_esperado"]]
+                df_defecto = df_anomalias[df_anomalias["ratio_real"] <= df_anomalias["ratio_esperado"]]
                 
-            if not df_defecto.empty:
-                fig.add_trace(go.Scatter(
-                    x=df_defecto[DatasetKeys.FECHA], 
-                    y=df_defecto["ratio_real"],
-                    mode='markers', 
-                    name='Anomalía (Defecto)',
-                    marker=dict(color='#ffa500', size=8, symbol='cross', line=dict(width=0.6, color='#ffa500')),
-                    hovertext=df_defecto[DatasetKeys.FRAUD_RISK_SCORE].apply(lambda x: f"Riesgo Fraude: {x:.1f}%") if DatasetKeys.FRAUD_RISK_SCORE in df_defecto.columns else None,
-                    hoverinfo="text+x+y"
-                ))
+                if not df_exceso.empty:
+                    fig.add_trace(go.Scatter(
+                        x=df_exceso[DatasetKeys.FECHA], 
+                        y=df_exceso["ratio_real"],
+                        mode='markers', 
+                        name='Inconsistencia (Exceso)',
+                        marker=dict(color='#ff4b4b', size=8, symbol='x', line=dict(width=0.6, color='#ff4b4b')),
+                        hoverinfo="text+x+y"
+                    ))
+                    
+                if not df_defecto.empty:
+                    fig.add_trace(go.Scatter(
+                        x=df_defecto[DatasetKeys.FECHA], 
+                        y=df_defecto["ratio_real"],
+                        mode='markers', 
+                        name='Inconsistencia (Defecto)',
+                        marker=dict(color='#ffa500', size=8, symbol='cross', line=dict(width=0.6, color='#ffa500')),
+                        hoverinfo="text+x+y"
+                    ))
 
     fig.update_layout(
         template="plotly_dark",
