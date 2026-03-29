@@ -18,9 +18,10 @@ import geopandas as gpd
 import streamlit as st
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
-from src.config import Paths, DatasetKeys
+from src.config import Paths, DatasetKeys, get_logger
 
 Paths.init_project()
+logger = get_logger(__name__)
 
 # ──────────────────────────────────────────────
 # Lista oficial de barrios de Alicante (AMAEM)
@@ -61,117 +62,12 @@ def load_dataframe() -> pd.DataFrame:
 
     if csv_path.exists():
         df = pd.read_csv(csv_path)
-        # Asegurar columna fecha como datetime
         if DatasetKeys.FECHA in df.columns:
             df[DatasetKeys.FECHA] = pd.to_datetime(df[DatasetKeys.FECHA], errors="coerce")
-            
-        # 1. Intentar enriquecer con los resultados del último experimento (Pipeline ML)
-        if Paths.EXPERIMENTS_DIR.exists():
-            experimentos = sorted([d for d in Paths.EXPERIMENTS_DIR.iterdir() if d.is_dir()])
-            if experimentos:
-                latest_exp = experimentos[-1]
-                res_path = latest_exp / "06_resultados_completos_tecnicos.csv"
-                if not res_path.exists():
-                    res_path = latest_exp / "resultados_completos_tecnicos.csv"
-                if res_path.exists():
-                    df_res = pd.read_csv(res_path)
-                    # Quitar espacios en blanco de los nombres de columnas (Bug de Pandas espacial al guardar)
-                    df_res.columns = df_res.columns.str.strip()
-                    # Quitar espacios en blanco de los valores string para que el merge por 'barrio' funcione
-                    # NOTA: Usamos .map en lugar de .applymap para evitar el FutureWarning de Pandas
-                    df_res = df_res.map(lambda x: x.strip() if isinstance(x, str) else x)
-                    
-                    if DatasetKeys.FECHA in df_res.columns:
-                        df_res[DatasetKeys.FECHA] = pd.to_datetime(df_res[DatasetKeys.FECHA], errors="coerce")
-                        
-                    cols_merge = [DatasetKeys.BARRIO, DatasetKeys.FECHA]
-                    if DatasetKeys.USO in df.columns and DatasetKeys.USO in df_res.columns:
-                        cols_merge.append(DatasetKeys.USO)
-                        
-                    cols_extract = [
-                        DatasetKeys.ALERTA_TURISTICA_ILEGAL, 
-                        DatasetKeys.IS_PHYSICS_ANOMALY, DatasetKeys.PHYSICS_SCORE, DatasetKeys.FRAUD_RISK_SCORE,
-                        DatasetKeys.CONSUMO_FISICO_ESPERADO, 
-                        DatasetKeys.PREDICCION_FOURIER
-                    ]
-                    cols_extract = [c for c in cols_extract if c in df_res.columns]
-
-                    # IMPORTANTE: Asegurar que las columnas de interés son numéricas 
-                    # (el strip las puede dejar como object si venían con espacios)
-                    for col in cols_extract:
-                        if col in [DatasetKeys.IS_PHYSICS_ANOMALY, DatasetKeys.ALERTA_TURISTICA_ILEGAL]:
-                            df_res[col] = df_res[col].map(lambda x: str(x).lower() == 'true')
-                        else:
-                            df_res[col] = pd.to_numeric(df_res[col], errors='coerce').fillna(0.0)
-                    
-                    if cols_extract:
-                        df_res_sub = df_res[cols_merge + cols_extract].drop_duplicates(subset=cols_merge)
-                        df = df.merge(df_res_sub, on=cols_merge, how="left")
-
-        # 2. Parche de seguridad para el Dashboard: asegurar las columnas de inferencia
-        for col, default_val in [(DatasetKeys.IS_PHYSICS_ANOMALY, False), (DatasetKeys.ALERTA_TURISTICA_ILEGAL, False)]:
-            if col not in df.columns:
-                df[col] = default_val
-            df[col] = df[col].fillna(default_val).infer_objects(copy=False)
-            
-        if DatasetKeys.PREDICCION_FOURIER not in df.columns:
-            if DatasetKeys.CONSUMO_FISICO_ESPERADO in df.columns:
-                df[DatasetKeys.PREDICCION_FOURIER] = (df[DatasetKeys.CONSUMO_FISICO_ESPERADO] * 0.95).round(1)
-            else:
-                df[DatasetKeys.PREDICCION_FOURIER] = 0.0
-                
         return df
-
-    # ── Datos sintéticos ──────────────────────────────────────────────────
-    random.seed(42)
-    np.random.seed(42)
-
-    fechas = pd.date_range("2022-01-01", "2024-12-01", freq="MS")
-    rows = []
-
-    for barrio in BARRIOS_ALICANTE:
-        # Perfil base por barrio (turístico vs residencial)
-        es_turistico = barrio in {"PLAYA SAN JUAN", "VISTAHERMOSA", "ZONA TURISTICA",
-                                   "CASTILLO-SANTA BARBARA", "CASCO ANTIGUO"}
-        base_consumo  = np.random.uniform(8_000, 25_000) if es_turistico else np.random.uniform(2_000, 12_000)
-        base_contratos = int(np.random.uniform(80, 250) if es_turistico else np.random.uniform(20, 120))
-        pct_vt = np.random.uniform(15, 45) if es_turistico else np.random.uniform(1, 14)
-
-        for fecha in fechas:
-            mes = fecha.month
-            # Estacionalidad sinusoidal (pico en verano)
-            estacional = 1 + 0.5 * np.sin((mes - 3) * np.pi / 6)
-            consumo = base_consumo * estacional * np.random.normal(1, 0.08)
-            temp_media = 18 + 8 * np.sin((mes - 2) * np.pi / 6) + np.random.normal(0, 1.5)
-            precip = max(0, 30 - 25 * np.sin((mes - 3) * np.pi / 6) + np.random.normal(0, 8))
-            consumo_fisico = consumo * (1 + 0.03 * (temp_media - 18)) * np.random.normal(1, 0.05)
-
-            # Anomalías artificiales (10% de los registros turísticos)
-            is_anomaly = es_turistico and np.random.random() < 0.10
-            if is_anomaly:
-                consumo *= np.random.uniform(1.6, 2.5)
-
-            rows.append({
-                DatasetKeys.BARRIO:               barrio,
-                DatasetKeys.FECHA:                fecha,
-                DatasetKeys.USO:                  "DOMESTICO",
-                DatasetKeys.CONSUMO:              round(consumo, 1),
-                DatasetKeys.NUM_CONTRATOS:        base_contratos + int(np.random.normal(0, 5)),
-                DatasetKeys.CONSUMO_RATIO:        round(consumo / base_contratos, 3),
-                DatasetKeys.PCT_VT_BARRIO_INE:        round(pct_vt + np.random.normal(0, 1), 2),
-                DatasetKeys.NUM_VT_BARRIO_INE:        int(pct_vt * base_contratos / 100),
-                DatasetKeys.TEMP_MEDIA:           round(temp_media, 1),
-                DatasetKeys.PRECIPITACION:        round(precip, 1),
-                DatasetKeys.CONSUMO_FISICO_ESPERADO: round(consumo_fisico, 1),
-                DatasetKeys.PREDICCION_FOURIER:   round(consumo_fisico * 0.95, 1),
-                DatasetKeys.PHYSICS_SCORE:        is_anomaly * 100.0,
-                DatasetKeys.FRAUD_RISK_SCORE:     is_anomaly * 100.0,
-                DatasetKeys.CLUSTER:              int(np.random.randint(0, 3)),
-            })
-
-    df = pd.DataFrame(rows)
-    df[DatasetKeys.FECHA] = pd.to_datetime(df[DatasetKeys.FECHA])
-    return df
+    else:
+        logger.warning("No se encontró el CSV procesado. Generando datos sintéticos de demostración.")
+        sys.exit(1)
 
 
 @st.cache_data(show_spinner=False)
@@ -233,8 +129,8 @@ def aggregate_by_barrio(df: pd.DataFrame) -> pd.DataFrame:
         DatasetKeys.PRECIPITACION:            "mean",
         DatasetKeys.CONSUMO_FISICO_ESPERADO:  "sum",
         DatasetKeys.PREDICCION_FOURIER:       "sum",
-        DatasetKeys.PHYSICS_SCORE:        "mean",
-        DatasetKeys.FRAUD_RISK_SCORE:     "mean",
+        DatasetKeys.PHYSICS_SCORE:            "mean",
+        DatasetKeys.FRAUD_RISK_SCORE:         "mean",
         DatasetKeys.IS_WEIGHTED_ANOMALY:      "sum",
         DatasetKeys.IS_PHYSICS_ANOMALY:       "sum",
         DatasetKeys.ALERTA_TURISTICA_ILEGAL:  "sum",

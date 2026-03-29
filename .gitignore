@@ -20,5 +20,9 @@ notebooks/AMAEM/
 **/.ipynb_checkpoints/
 **/cache/
 
-# Cache Rara
+# VSCode
 .vs/
+
+# Pytest
+**/.pytest_cache/
+**/.pytest_cache/

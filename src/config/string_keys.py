@@ -46,21 +46,19 @@ class DatasetKeys:
     PLAZAS_VIVIENDAS_GVA      = "plazas_viviendas_barrio_gva"
     PLAZAS_HOTELES_BARRIO_GVA = "plazas_hoteles_barrio_gva"
 
-    # --- Identificadores resultantes de Modelos de ML y Pipelines ---
+    # --- Datos de Festivos ---
+    DIAS_FESTIVOS = "dias_festivos"
+    PCT_FESTIVOS  = "pct_festivos"
     
-    # Métricas de detección de anomalías
-    RESIDUO_POSITIVO        = "residuo_positivo"
-    FRAUD_RISK_SCORE        = "FRAUD_RISK_SCORE"
-    ALERTA_TURISTICA_ILEGAL = "ALERTA_TURISTICA_ILEGAL"
+    # --- Causas de Anomalías (Físicos 6 Niveles) ---
+    Z_ERROR_FINAL = "z_error_final"
+    ALERTA_NIVEL = "alerta_nivel"
     
-    # Flags Booleanos de Anomalía
-    IS_PHYSICS_ANOMALY      = "is_physics_anomaly"
-    PHYSICS_SCORE           = "physics_score"   # Escala 0-100 (100 = Umbral de Alerta)
-    
-    # --- Factores Sociales y de Calendario (Festivos) ---
-    DIAS_FESTIVOS           = "dias_festivos"
-    PCT_FESTIVOS            = "porcentaje_anual_festivos"
+    PCT_CALOR_FRIO = "pct_calor_frio"
+    PCT_LLUVIA_SEQUIA = "pct_lluvia_sequia"
+    PCT_VEGETACION = "pct_vegetacion"
+    PCT_TURISMO = "pct_turismo"
+    PCT_CAUSA_DESCONOCIDA = "pct_causa_desconocida"
+    PCT_FIESTA = "pct_fiesta"
 
-    # --- Campos para generación de Reportes Finales ---
-    NIVEL_RIESGO            = "nivel_riesgo"
-    MOTIVO                  = "motivo"
+   

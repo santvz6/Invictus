@@ -16,7 +16,7 @@ from src.features.aemet_processor import AEMETProcessor
 from src.features.amaem_processor import AMAEMProcessor
 from src.features.gva_processor import GVAProcessor
 from src.features.holiday_barrio_processor import HolidayBarrioProcessor
-from src.config import get_logger, DatasetKeys, Paths
+from src.config import get_logger, DatasetKeys, Paths, FeatureConfig, FeatureScaling
 
 # Logger central del pipeline de características
 logger = get_logger(__name__)
@@ -30,45 +30,7 @@ class WaterPreprocessor:
     y la generación de ventanas deslizantes (sliding windows) para el aprendizaje temporal.
     """
     
-    # Constantes de tipado de escalado
-    MIN_MAX = "min-max"
-    ROBUST  = "robust"
-    SIN_COS = "sin-cos"
-
-    # Diccionario maestro de características predictoras (Features)
-    # Define cómo debe ser tratada cada variable antes de entrar en la red neuronal.
-    FEATURES = {
-        # AMAEM
-        DatasetKeys.CONSUMO_RATIO: ROBUST,
-        DatasetKeys.MES_SIN: SIN_COS,    
-        DatasetKeys.MES_COS: SIN_COS,
-
-        # INE - TOURISM
-        # DatasetKeys.NUM_VT_BARRIO_INE: MIN_MAX,           # Eliminado por redundancia con el PCT_VT_SIN_REGISTRAR
-        # DatasetKeys.PCT_VT_BARRIO_INE: MIN_MAX,           # Eliminado por redundancia con el PCT_VT_SIN_REGISTRAR
-        # DatasetKeys.OCUP_VT_PROV_INE: MIN_MAX,            # Eliminado (información por Provincias)
-        # DatasetKeys.PERNOCT_VT_PROV_INE: MIN_MAX,         # Eliminado (información por Provincias)
-
-        # AEMET
-        DatasetKeys.TEMP_MEDIA: MIN_MAX, 
-        DatasetKeys.PRECIPITACION: MIN_MAX,
-        
-        # SENTINEL
-        DatasetKeys.NDVI_SATELITE: MIN_MAX,
-        
-        # GVA
-        # DatasetKeys.NUM_VT_BARRIO_GVA: MIN_MAX,           # Eliminado por redundancia con el PCT_VT_SIN_REGISTRAR
-        # DatasetKeys.PLAZAS_VIVIENDAS_GVA: MIN_MAX,        # Eliminado por redundancia con el PCT_VT_SIN_REGISTRAR
-        # DatasetKeys.NUM_HOTELES_BARRIO_GVA: MIN_MAX,      # Optamos por utilizar Plazas Hoteles
-        DatasetKeys.PLAZAS_HOTELES_BARRIO_GVA: MIN_MAX,
-        
-        # FESTIVOS
-        #DatasetKeys.DIAS_FESTIVOS: MIN_MAX,                # ! Eliminado porque no es feature de predicción
-
-        # ENGINEERED FEATURES
-        # DatasetKeys.NUM_VT_SIN_REGISTRAR: MIN_MAX,         # Eliminado por redundancia con el PCT_VT_SIN_REGISTRAR
-        # DatasetKeys.PCT_VT_SIN_REGISTRAR: ROBUST           # ! Eliminado porque no es feature de predicción
-    }
+    # Omitimos propiedades estáticas ya que ahora reciden en src/config/features.py
 
     @staticmethod
     def _load_data() -> pd.DataFrame:
@@ -92,14 +54,14 @@ class WaterPreprocessor:
         df = df.copy()
         scalers = {}
 
-        for col, scale_type in WaterPreprocessor.FEATURES.items():
+        for col, scale_type in FeatureConfig.PIPELINE_FEATURES.items():
             if col in df.columns:
-                if scale_type == WaterPreprocessor.ROBUST:
+                if scale_type == FeatureScaling.ROBUST:
                     scaler = RobustScaler()
                     
                     df[col] = scaler.fit_transform(df[[col]])
                     scalers[col] = scaler
-                elif scale_type == WaterPreprocessor.MIN_MAX:
+                elif scale_type == FeatureScaling.MIN_MAX:
                     scaler = MinMaxScaler()
                     df[col] = scaler.fit_transform(df[[col]])
                     scalers[col] = scaler
@@ -195,9 +157,9 @@ class WaterPreprocessor:
         
         # Eliminamos columnas NO utilizadas
         allways_used = [DatasetKeys.FECHA, DatasetKeys.BARRIO, DatasetKeys.NUM_CONTRATOS, DatasetKeys.USO]
-        df_scaled = df_scaled[allways_used + list(WaterPreprocessor.FEATURES.keys())]
+        df_scaled = df_scaled[allways_used + list(FeatureConfig.PIPELINE_FEATURES.keys())]
 
-        not_scaled_columns = [c for c in list(WaterPreprocessor.FEATURES.keys()) if c in df_not_scaled.columns]
+        not_scaled_columns = [c for c in list(FeatureConfig.PIPELINE_FEATURES.keys()) if c in df_not_scaled.columns]
         df_not_scaled      = df_not_scaled[allways_used + not_scaled_columns]
 
         # Persistencia del estado final

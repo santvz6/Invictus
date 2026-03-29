@@ -1,13 +1,12 @@
 import pandas as pd
 import argparse
-import torch
 
 from pathlib import Path
 from datetime import datetime
 
 from src.features.preprocessor import WaterPreprocessor
-from src.features.fisicos_processor import FisicosProcessor
-from src.config import get_logger, Paths, DatasetKeys
+from src.model import ModeloFisico
+from src.config import get_logger, Paths, FeatureConfig
 
 Paths.init_project()
 logger = get_logger(__name__)
@@ -24,10 +23,10 @@ class WaterApp:
         Ejecuta el pipeline de detección basado en física.
         """
         logger.info("========== INICIANDO PIPELINE ==========")
-        device = "cuda" if torch.cuda.is_available() else "cpu"
         
-        df_scaled, df_not_scaled, scalers = WaterPreprocessor.process_all_data()
-        df_final, rf_model, rf_features = FisicosProcessor.process(df_not_scaled, feature_names=list(WaterPreprocessor.FEATURES.keys()))
+        _, df_not_scaled, _             = WaterPreprocessor.process_all_data()
+        df_final, rf_model, rf_features = ModeloFisico.process(df_not_scaled, 
+                                                               feature_names=list(FeatureConfig.PIPELINE_FEATURES.keys()))
 
         WaterApp._save_results(df_final, rf_model, rf_features)
         return df_final
@@ -36,7 +35,8 @@ class WaterApp:
 
     @staticmethod
     def _save_results(df_resultados: pd.DataFrame, rf_model: object, rf_features: list) -> None:
-        pass
+        logger.info(f"Guardando dataframe final consolidado en {Paths.PROC_CSV_AMAEM_NOT_SCALED}")
+        df_resultados.to_csv(Paths.PROC_CSV_AMAEM_NOT_SCALED, index=False)
 
 
 def main():

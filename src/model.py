@@ -10,15 +10,16 @@ turismo, etc.) sobre el residuo estacional.
 import numpy as np
 import pandas as pd
 import logging
+import scipy.stats as stats
 from scipy.optimize import curve_fit
 from sklearn.ensemble import RandomForestRegressor
 
-from src.config import DatasetKeys, Paths, get_logger, AIConstants
+from src.config import DatasetKeys, Paths, get_logger, AIConstants, FeatureConfig
 
 # Configuración del logger para seguimiento del modelado físico
 logger = get_logger(__name__)
 
-class FisicosProcessor:
+class ModeloFisico:
     """
     Procesador de modelado híbrido para la determinación del consumo base.
     
@@ -55,16 +56,16 @@ class FisicosProcessor:
         logger.info("Iniciando cálculo de consumo físico esperado (Fourier + ML)...")
         
         # 1. Preparación y ordenación cronológica
-        df = FisicosProcessor._prepare_data(df)
+        df = ModeloFisico._prepare_data(df)
 
         # 2. Fase de Fourier: Estacionalidad base por segmento [Barrio x Uso]
-        df = FisicosProcessor._calculate_fourier_baseline(df)
+        df = ModeloFisico._calculate_fourier_baseline(df)
 
         # 3. Fase de ML: Modelado del impacto de variables exógenas
-        df, rf_model, features_rf = FisicosProcessor._calculate_ml_impact(df, feature_names)
+        df, rf_model, features_rf = ModeloFisico._calculate_ml_impact(df, feature_names)
 
         # 4. Consolidación y persistencia
-        df = FisicosProcessor._finalize_fisicos(df)
+        df = ModeloFisico._finalize_fisicos(df)
 
         return df, rf_model, features_rf
 
@@ -95,13 +96,13 @@ class FisicosProcessor:
             try:
                 if len(y_target_train) > 0:
                     coef, _ = curve_fit(
-                        FisicosProcessor._modelo_fourier, t_arr_train, y_target_train, 
+                        ModeloFisico._modelo_fourier, t_arr_train, y_target_train, 
                         p0=[0, np.mean(y_target_train), 1000, 1000, 100, 100], maxfev=10000
                     )
                 else:
                     raise ValueError("Sin datos de entrenamiento")
                 # Predecimos para todos los meses (incluido 2024)
-                df.loc[mask, DatasetKeys.PREDICCION_FOURIER] = FisicosProcessor._modelo_fourier(t_arr_all, *coef)
+                df.loc[mask, DatasetKeys.PREDICCION_FOURIER] = ModeloFisico._modelo_fourier(t_arr_all, *coef)
             except Exception:
                 # Fallback: Si el ajuste falla por falta de datos, se usa el valor medio histórico
                 logger.warning(f"Fallo en ajuste Fourier para {barrio} - {uso}. Aplicando media.")
@@ -120,14 +121,11 @@ class FisicosProcessor:
         for col in exogenas:
             df[col] = df[col].fillna(df[col].mean())
 
-        # Añadimos contexto de fecha (mes) y uso para mejorar la capacidad predictiva sin memorizar barrios
-        df['mes_temp'] = pd.to_datetime(df[DatasetKeys.FECHA]).dt.month
-        
         # Generamos contextos de uso (DOMESTICO vs OTROS) - es de baja cardinalidad, seguro contra leakage masivo
         df_ml = pd.get_dummies(df, columns=[DatasetKeys.USO])
         columnas_contexto = [col for col in df_ml.columns if col.startswith(DatasetKeys.USO + '_')]
         
-        features_rf = exogenas + [DatasetKeys.PREDICCION_FOURIER, 'mes_temp'] + columnas_contexto
+        features_rf = exogenas + [DatasetKeys.PREDICCION_FOURIER] + columnas_contexto
         X = df_ml[features_rf].fillna(0)
         y = df_ml[DatasetKeys.RESIDUO].fillna(0)
         
@@ -147,7 +145,7 @@ class FisicosProcessor:
 
     @staticmethod
     def _finalize_fisicos(df: pd.DataFrame) -> pd.DataFrame:
-        """Combina componentes y genera los residuos finales para la detección de fraude."""
+        """Combina componentes y genera los residuos finales para la detección de fraude y porcentajes de causa."""
         # Híbrido: Base Física + Impacto de Contexto
         df[DatasetKeys.CONSUMO_FISICO_ESPERADO] = df[DatasetKeys.PREDICCION_FOURIER] + df[DatasetKeys.IMPACTO_EXOGENO]
         
@@ -155,13 +153,69 @@ class FisicosProcessor:
         # Un residuo positivo elevado es un fuerte indicador de posible fraude/fuga
         df[DatasetKeys.RESIDUO] = df[DatasetKeys.CONSUMO_RATIO] - df[DatasetKeys.CONSUMO_FISICO_ESPERADO]
         
+        # --- 4. Cálculo de Causas (Porcentajes) y Triaje de Anomalías ---
+        sospechosos_posibles = FeatureConfig.CAUSAS_EXOGENAS
+        
+        sospechosos = {k: v for k, v in sospechosos_posibles.items() if k in df.columns}
+        
+        # Función auxiliar para cálculo robusto de Z-Score evitando avisos de división por cero
+        def robust_zscore(x):
+            std = x.std()
+            if std == 0 or np.isnan(std):
+                return 0.0
+            return (x - x.mean()) / std
+
+        for var in sospechosos.keys():
+            df[f'z_{var}'] = df.groupby([DatasetKeys.BARRIO, DatasetKeys.USO])[var].transform(robust_zscore)
+            df[f'peso_{var}'] = df[f'z_{var}'].abs()
+            
+        df[DatasetKeys.Z_ERROR_FINAL] = df.groupby([DatasetKeys.BARRIO, DatasetKeys.USO])[DatasetKeys.RESIDUO].transform(robust_zscore)
+        df['peso_Desconocido'] = df[DatasetKeys.Z_ERROR_FINAL].abs()
+        
+        columnas_pesos = [f'peso_{var}' for var in sospechosos.keys()] + ['peso_Desconocido']
+        df['suma_pesos'] = df[columnas_pesos].sum(axis=1).replace(0, 1) # Evitar división por cero
+        
+        columnas_pct = []
+        for var, col_name in sospechosos.items():
+            df[col_name] = (df[f'peso_{var}'] / df['suma_pesos']) * 100
+            columnas_pct.append(col_name)
+            
+        df[DatasetKeys.PCT_CAUSA_DESCONOCIDA] = (df['peso_Desconocido'] / df['suma_pesos']) * 100
+        columnas_pct.append(DatasetKeys.PCT_CAUSA_DESCONOCIDA)
+        
+        # --- Umbrales del Semáforo (Niveles de Alerta) ---
+        z_leve = 1.5
+        z_mod = 2.0
+        z_grave = 2.5
+        
+        condiciones = [
+            df[DatasetKeys.Z_ERROR_FINAL] > z_grave,
+            (df[DatasetKeys.Z_ERROR_FINAL] > z_mod) & (df[DatasetKeys.Z_ERROR_FINAL] <= z_grave),
+            (df[DatasetKeys.Z_ERROR_FINAL] > z_leve) & (df[DatasetKeys.Z_ERROR_FINAL] <= z_mod),
+            df[DatasetKeys.Z_ERROR_FINAL] < -z_grave,
+            (df[DatasetKeys.Z_ERROR_FINAL] < -z_mod) & (df[DatasetKeys.Z_ERROR_FINAL] >= -z_grave),
+            (df[DatasetKeys.Z_ERROR_FINAL] < -z_leve) & (df[DatasetKeys.Z_ERROR_FINAL] >= -z_mod)
+        ]
+        
+        niveles = [
+            '1_EXCESO_Grave', '2_EXCESO_Moderado', '3_EXCESO_Leve',
+            '4_DEFECTO_Grave', '5_DEFECTO_Moderado', '6_DEFECTO_Leve'
+        ]
+        
+        df[DatasetKeys.ALERTA_NIVEL] = np.select(condiciones, niveles, default='Normal')
+        
+        # Limpieza de columnas intermedias temporales de pesos
+        cols_to_drop = [f'z_{var}' for var in sospechosos.keys()] + columnas_pesos + ['suma_pesos']
+        df.drop(columns=cols_to_drop, inplace=True, errors='ignore')
+        
         # Persistencia del checkpoint para auditoría
         logger.info(f"Registrando dataset intermedio Físicos en {Paths.PROC_CSV_AMAEM_FISICOS}")
         cols_to_save = [
             DatasetKeys.BARRIO, DatasetKeys.USO, DatasetKeys.FECHA, 
             DatasetKeys.PREDICCION_FOURIER, DatasetKeys.IMPACTO_EXOGENO, 
-            DatasetKeys.RESIDUO, DatasetKeys.CONSUMO_FISICO_ESPERADO
-        ]
+            DatasetKeys.RESIDUO, DatasetKeys.CONSUMO_FISICO_ESPERADO,
+            DatasetKeys.Z_ERROR_FINAL, DatasetKeys.ALERTA_NIVEL
+        ] + columnas_pct
             
         df[cols_to_save].drop_duplicates(subset=[DatasetKeys.BARRIO, DatasetKeys.USO, DatasetKeys.FECHA]).to_csv(Paths.PROC_CSV_AMAEM_FISICOS, index=False)
         
