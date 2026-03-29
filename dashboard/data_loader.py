@@ -41,7 +41,7 @@ FEATURES_DISPONIBLES = {
     "Consumo Total (m³)":        DatasetKeys.CONSUMO,
     "Nº Contratos":              DatasetKeys.NUM_CONTRATOS,
     "Ratio Consumo/Contrato":    DatasetKeys.CONSUMO_RATIO,
-    "Nº VT por Barrio":          DatasetKeys.NUM_VT_BARRIO_INE,
+    "% VT sin registrar":        DatasetKeys.PCT_VT_SIN_REGISTRAR,
     "Z-Score Residual Físico":   DatasetKeys.Z_ERROR_FINAL,
 }
 
@@ -124,21 +124,25 @@ def aggregate_by_barrio(df: pd.DataFrame) -> pd.DataFrame:
         
     agg = {
         DatasetKeys.CONSUMO:                  "sum",
-        DatasetKeys.NUM_CONTRATOS:            "sum",
+        DatasetKeys.NUM_CONTRATOS:            "mean",
         DatasetKeys.CONSUMO_RATIO:            "mean",
-        DatasetKeys.PCT_VT_BARRIO_INE:        "mean",
-        DatasetKeys.NUM_VT_BARRIO_INE:        "sum",
+        DatasetKeys.PCT_VT_SIN_REGISTRAR:     "mean",
         DatasetKeys.TEMP_MEDIA:               "mean",
         DatasetKeys.PRECIPITACION:            "mean",
         DatasetKeys.CONSUMO_FISICO_ESPERADO:  "sum",
         DatasetKeys.PREDICCION_FOURIER:       "sum",
-        DatasetKeys.Z_ERROR_FINAL:            "mean",
+        DatasetKeys.Z_ERROR_FINAL:            "max",   # Mostrar max Z-score en lugar de mean que se cancela a 0
         "num_alertas":                        "sum",
     }
     # Filtramos columnas que existan
     agg = {k: v for k, v in agg.items() if k in df_copy.columns}
     
     df_agg = df_copy.groupby(DatasetKeys.BARRIO).agg(agg).reset_index()
+    
+    # Limpiamos Infs y NaNs que rompen el mapa de Folium
+    df_agg.replace([np.inf, -np.inf], np.nan, inplace=True)
+    df_agg.fillna(0, inplace=True)
+    
     # Redondeo seguro para que los Tooltips no muestren números con decimales infinitos
     num_cols = df_agg.select_dtypes(include=[np.number]).columns
     df_agg[num_cols] = df_agg[num_cols].round(2)
