@@ -26,7 +26,7 @@ from dashboard.components.llm_report     import render_llm_report
 
 
 # ════════════════════════════════════════════════════════════════════════════
-# 1. CONFIGURACIÓN DE PÁGINA
+# CONFIGURACIÓN DE LA PÁGINA
 # ════════════════════════════════════════════════════════════════════════════
 st.set_page_config(
     page_title="INVICTUS — Dashboard Fraude Turístico",
@@ -109,28 +109,21 @@ hr { border-color: rgba(76,201,240,0.2) !important; }
 
 
 # ════════════════════════════════════════════════════════════════════════════
-# 2. CARGA DE DATOS (cacheada)
+# CARGA DE DATOS (cacheada)
 # ════════════════════════════════════════════════════════════════════════════
 with st.spinner("Cargando datos del pipeline Water2Fraud..."):
     df_full = load_dataframe()
     gdf     = load_geodataframe()
 
-is_mock = not (
-    hasattr(df_full, "_source") or  # marca real (no aplica)
-    (os.path.exists(os.path.join(os.path.dirname(__file__), "..",
-     "internal", "processed", "AMAEM-2022-2024_not_scaled.csv")))
-)
-
-
 # ════════════════════════════════════════════════════════════════════════════
-# 3. ESTADO DE SESIÓN
+# ESTADO DE SESIÓN
 # ════════════════════════════════════════════════════════════════════════════
 if "barrio_seleccionado" not in st.session_state:
     st.session_state.barrio_seleccionado = None
 
 
 # ════════════════════════════════════════════════════════════════════════════
-# 4. SIDEBAR — CONTROLES GLOBALES
+# SIDEBAR — CONTROLES GLOBALES
 # ════════════════════════════════════════════════════════════════════════════
 with st.sidebar:
     # Logo / Título
@@ -142,11 +135,8 @@ with st.sidebar:
     </div>
     """, unsafe_allow_html=True)
 
-    if is_mock:
-        st.warning("⚠️ Usando **datos sintéticos** de demostración. Ejecuta el pipeline para datos reales.", icon="🔬")
-
     st.markdown("---")
-    st.markdown("#### 🗓 Filtro Temporal")
+    st.markdown("#### Filtro Temporal")
 
     fechas_disponibles = sorted(df_full[DatasetKeys.FECHA].dt.to_period("M").unique())
     meses_es = {1: "Ene", 2: "Feb", 3: "Mar", 4: "Abr", 5: "May", 6: "Jun", 
@@ -154,7 +144,7 @@ with st.sidebar:
     opciones_label = [f"{meses_es[f.month]} {f.year}" for f in fechas_disponibles]
     mapeo_fechas = {label: f.to_timestamp() for label, f in zip(opciones_label, fechas_disponibles)}
 
-    # --- Nueva lógica de Filtro Temporal (Fix KeyError: 'E') ---
+    # --- Filtro Temporal ---
     if "temp_range" not in st.session_state:
         st.session_state.temp_range = (opciones_label[0], opciones_label[-1])
 
@@ -195,7 +185,7 @@ with st.sidebar:
 
     st.markdown("#### Filtro por Uso")
     usos_disponibles = ["Todos los usos"] + sorted(df_full[DatasetKeys.USO].unique().tolist())
-    # Recomendamos DOMESTICO para que coincida con la IA
+    # Recomendamos filtro DOMESTICO
     uso_filtro = st.selectbox("Tipo de uso", usos_disponibles, 
                               index=usos_disponibles.index("DOMESTICO") if "DOMESTICO" in usos_disponibles else 0)
 
@@ -220,14 +210,14 @@ with st.sidebar:
 
 
 # ════════════════════════════════════════════════════════════════════════════
-# 5. FILTRADO DE DATOS
+#  FILTRADO DE DATOS
 # ════════════════════════════════════════════════════════════════════════════
 df_filtered = filter_dataframe(df_full, fecha_inicio, fecha_fin, barrio_filtro, uso_filtro)
 df_barrio_agg = aggregate_by_barrio(df_filtered)
 
 
 # ════════════════════════════════════════════════════════════════════════════
-# 6. ENCABEZADO PRINCIPAL
+# ENCABEZADO PRINCIPAL
 # ════════════════════════════════════════════════════════════════════════════
 st.markdown("""
 <div style="padding: 10px 0 20px;">
@@ -242,8 +232,8 @@ st.markdown("""
 
 # KPIs globales rápidos
 total_contratos = int(df_filtered[DatasetKeys.NUM_CONTRATOS].sum()) if DatasetKeys.NUM_CONTRATOS in df_filtered.columns else 0
-alert_col_global = DatasetKeys.ALERTA_TURISTICA_ILEGAL
-total_alertas   = int(df_filtered[alert_col_global].sum()) if alert_col_global in df_filtered.columns else 0
+alert_col_global = "num_alertas"
+total_alertas   = int((df_filtered[DatasetKeys.ALERTA_NIVEL] != 'Normal').sum()) if DatasetKeys.ALERTA_NIVEL in df_filtered.columns else 0
 total_consumo   = df_filtered[DatasetKeys.CONSUMO].sum() if DatasetKeys.CONSUMO in df_filtered.columns else 0
 num_barrios     = df_filtered[DatasetKeys.BARRIO].nunique()
 
@@ -259,7 +249,7 @@ st.markdown("---")
 
 
 # ════════════════════════════════════════════════════════════════════════════
-# 7. TABS PRINCIPALES
+# TABS PRINCIPALES
 # ════════════════════════════════════════════════════════════════════════════
 tab_mapa, tab_whatif, tab_informe = st.tabs([
     "Mapa de Calor Interactivo",

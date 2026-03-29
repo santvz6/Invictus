@@ -28,6 +28,11 @@ class ModeloFisico:
     2. Componente de Impacto: Modelado de residuos mediante factores exógenos.
     """
 
+    NIVEL_ALERTAS = [
+        '1_EXCESO_Grave', '2_EXCESO_Moderado', '3_EXCESO_Leve',
+        '4_DEFECTO_Grave', '5_DEFECTO_Moderado', '6_DEFECTO_Leve'
+    ]
+
     @staticmethod
     def _modelo_fourier(t, m, c, a1, b1, a2, b2):
         """
@@ -197,12 +202,7 @@ class ModeloFisico:
             (df[DatasetKeys.Z_ERROR_FINAL] < -z_leve) & (df[DatasetKeys.Z_ERROR_FINAL] >= -z_mod)
         ]
         
-        niveles = [
-            '1_EXCESO_Grave', '2_EXCESO_Moderado', '3_EXCESO_Leve',
-            '4_DEFECTO_Grave', '5_DEFECTO_Moderado', '6_DEFECTO_Leve'
-        ]
-        
-        df[DatasetKeys.ALERTA_NIVEL] = np.select(condiciones, niveles, default='Normal')
+        df[DatasetKeys.ALERTA_NIVEL] = np.select(condiciones, ModeloFisico.NIVEL_ALERTAS, default='Normal')
         
         # Limpieza de columnas intermedias temporales de pesos
         cols_to_drop = [f'z_{var}' for var in sospechosos.keys()] + columnas_pesos + ['suma_pesos']

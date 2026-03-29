@@ -41,10 +41,8 @@ FEATURES_DISPONIBLES = {
     "Consumo Total (m³)":        DatasetKeys.CONSUMO,
     "Nº Contratos":              DatasetKeys.NUM_CONTRATOS,
     "Ratio Consumo/Contrato":    DatasetKeys.CONSUMO_RATIO,
-    "Ratio Consumo/Contrato":    DatasetKeys.CONSUMO_RATIO,
     "Nº VT por Barrio":          DatasetKeys.NUM_VT_BARRIO_INE,
-    "Score Físico (Fourier)":    DatasetKeys.PHYSICS_SCORE,
-    "Riesgo Fraude Global":      DatasetKeys.FRAUD_RISK_SCORE,
+    "Z-Score Residual Físico":   DatasetKeys.Z_ERROR_FINAL,
 }
 
 
@@ -83,7 +81,7 @@ def load_geodataframe() -> gpd.GeoDataFrame | None:
         gdf = gpd.read_file(geojson_path)
         gdf = gdf.to_crs(epsg=4326)
         
-        # Estandarizar nombre del barrio en el GeoJSON (Vital para tooltips y merge correctos sin solapes)
+        # Estandarizamos el nombre del barrio en el GeoJSON (Vital para tooltips y merge correctos sin solapes)
         for col in ["barrio_limpio", "DENOMINACI", "barrio"]:
             if col in gdf.columns:
                 gdf["barrio_id"] = gdf[col].astype(str).str.strip().str.upper()
@@ -92,7 +90,7 @@ def load_geodataframe() -> gpd.GeoDataFrame | None:
             # Fallback si no existe ninguna de las anteriores
             gdf["barrio_id"] = "DESCONOCIDO"
             
-        # Eliminar el polígono que representa a toda la ciudad para que no cubra a los demás barrios
+        # Eliminamos el polígono que representa a toda la ciudad para que no cubra a los demás barrios
         gdf = gdf[~gdf["barrio_id"].isin(["ALICANTE", "ALACANT", "ALICANTE/ALACANT"])]
             
         return gdf
@@ -119,6 +117,11 @@ def filter_dataframe(df: pd.DataFrame, fecha_inicio, fecha_fin,
 
 def aggregate_by_barrio(df: pd.DataFrame) -> pd.DataFrame:
     """Agrega el DataFrame filtrado a nivel de barrio (una fila por barrio)."""
+    
+    df_copy = df.copy()
+    if DatasetKeys.ALERTA_NIVEL in df_copy.columns:
+        df_copy["num_alertas"] = (df_copy[DatasetKeys.ALERTA_NIVEL] != "Normal").astype(int)
+        
     agg = {
         DatasetKeys.CONSUMO:                  "sum",
         DatasetKeys.NUM_CONTRATOS:            "sum",
@@ -129,16 +132,13 @@ def aggregate_by_barrio(df: pd.DataFrame) -> pd.DataFrame:
         DatasetKeys.PRECIPITACION:            "mean",
         DatasetKeys.CONSUMO_FISICO_ESPERADO:  "sum",
         DatasetKeys.PREDICCION_FOURIER:       "sum",
-        DatasetKeys.PHYSICS_SCORE:            "mean",
-        DatasetKeys.FRAUD_RISK_SCORE:         "mean",
-        DatasetKeys.IS_WEIGHTED_ANOMALY:      "sum",
-        DatasetKeys.IS_PHYSICS_ANOMALY:       "sum",
-        DatasetKeys.ALERTA_TURISTICA_ILEGAL:  "sum",
+        DatasetKeys.Z_ERROR_FINAL:            "mean",
+        "num_alertas":                        "sum",
     }
     # Filtramos columnas que existan
-    agg = {k: v for k, v in agg.items() if k in df.columns}
+    agg = {k: v for k, v in agg.items() if k in df_copy.columns}
     
-    df_agg = df.groupby(DatasetKeys.BARRIO).agg(agg).reset_index()
+    df_agg = df_copy.groupby(DatasetKeys.BARRIO).agg(agg).reset_index()
     # Redondeo seguro para que los Tooltips no muestren números con decimales infinitos
     num_cols = df_agg.select_dtypes(include=[np.number]).columns
     df_agg[num_cols] = df_agg[num_cols].round(2)

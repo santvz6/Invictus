@@ -58,7 +58,5 @@ class DatasetKeys:
     PCT_LLUVIA_SEQUIA = "pct_lluvia_sequia"
     PCT_VEGETACION = "pct_vegetacion"
     PCT_TURISMO = "pct_turismo"
-    PCT_CAUSA_DESCONOCIDA = "pct_causa_desconocida"
     PCT_FIESTA = "pct_fiesta"
-
-   
+    PCT_CAUSA_DESCONOCIDA = "pct_causa_desconocida"

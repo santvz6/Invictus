@@ -58,7 +58,10 @@ def _build_dynamic_prompt(barrio: str, df: pd.DataFrame) -> str:
     
     agg_dict = { DatasetKeys.CONSUMO: 'sum', DatasetKeys.NUM_CONTRATOS: 'sum' }
     if esperado_col in df_b.columns: agg_dict[esperado_col] = 'mean'  # El físico devuelve Ratio (m3/contrato)
-    if DatasetKeys.ALERTA_TURISTICA_ILEGAL in df_b.columns: agg_dict[DatasetKeys.ALERTA_TURISTICA_ILEGAL] = 'max'
+    if DatasetKeys.ALERTA_NIVEL in df_b.columns: agg_dict[DatasetKeys.ALERTA_NIVEL] = 'first'
+        
+    # Filtrar agg_dict por columnas que realmente existan en el DataFrame para evitar KeyError
+    agg_dict = {k: v for k, v in agg_dict.items() if k in df_b.columns}
         
     df_monthly = df_b.groupby(DatasetKeys.FECHA).agg(agg_dict).reset_index()
 
@@ -69,7 +72,10 @@ def _build_dynamic_prompt(barrio: str, df: pd.DataFrame) -> str:
     else:
         consumo_esperado = consumo_real * 0.95
 
-    alertas = df_monthly[DatasetKeys.ALERTA_TURISTICA_ILEGAL].sum() if DatasetKeys.ALERTA_TURISTICA_ILEGAL in df_monthly.columns else 0
+    alertas = (df_monthly[DatasetKeys.ALERTA_NIVEL] != 'Normal').sum() if DatasetKeys.ALERTA_NIVEL in df_monthly.columns else 0
+    niveles_detectados = df_monthly.loc[df_monthly[DatasetKeys.ALERTA_NIVEL] != "Normal", DatasetKeys.ALERTA_NIVEL].unique() if DatasetKeys.ALERTA_NIVEL in df_monthly.columns else []
+    niveles_str = ", ".join(niveles_detectados) if len(niveles_detectados) > 0 else "Ninguno"
+    
     vt_pct = df_b[DatasetKeys.PCT_VT_BARRIO_INE].mean() if DatasetKeys.PCT_VT_BARRIO_INE in df_b.columns else 0.0
     
     # --- Variables de contexto extra ---
@@ -95,7 +101,8 @@ def _build_dynamic_prompt(barrio: str, df: pd.DataFrame) -> str:
         f"  - Turismo Oficial: {vt_pct:.1f}% | Estimación Ilegales (Gap): {ilegal_pct:.1f}%\n"
         f"  - Consumo Real: {consumo_real:,.0f} m3 | Físico Esperado: {consumo_esperado:,.0f} m3\n"
         f"  - Desvío Total: {consumo_real - consumo_esperado:,.0f} m3 (Pico detectado en: {mes_pico})\n"
-        f"  - Alertas de Fraude Físico (Meses): {int(alertas)}\n\n"
+        f"  - Alertas de Fraude Físico (Meses): {int(alertas)}\n"
+        f"  - Niveles de Alerta Detectados: {niveles_str}\n\n"
         f"**Instrucciones**: NO inventes datos. Usa MÁXIMO 3 PÁRRAFOS en formato Markdown.\n"
     )
     return contexto

@@ -17,36 +17,24 @@ from sklearn.ensemble import RandomForestRegressor
 from sklearn.preprocessing import MinMaxScaler, RobustScaler
 
 from src.config import DatasetKeys, Paths
-from src.water2fraud.features.preprocessor import WaterPreprocessor
 
 @st.cache_resource(show_spinner="Cargando motores IA y Físico (Caché)...")
 def get_simulation_context():
     """
-    Carga los modelos pre-entrenados y artefactos serializados (Joblib/JSON) 
-    para la simulación interactiva sin reentrenar en vivo.
+    Carga los motores físicos entrenados para la simulación interactiva.
     """
-    if not Paths.EXPERIMENTS_DIR.exists():
-        raise FileNotFoundError("No se encontró el directorio de experimentos. Ejecute el pipeline primero.")
+    if not Paths.PROC_MODEL_RF.exists() or not Paths.PROC_FEATURES_RF.exists():
+        raise FileNotFoundError("No se encontró el modelo de producción. Ejecute 'python main.py --run' primero.")
         
-    exp_dirs = sorted([d for d in Paths.EXPERIMENTS_DIR.iterdir() if d.is_dir()])
-    if not exp_dirs:
-        raise FileNotFoundError("No hay experimentos entrenados disponibles.")
-        
-    latest_exp = exp_dirs[-1]
+    # 1. Cargar Modelos Físicos (Producción)
+    rf_model = joblib.load(Paths.PROC_MODEL_RF)
     
-    # 1. Cargar Modelos Físicos y Escaladores (ya entrenados)
-    rf_model = joblib.load(latest_exp / "rf_model.joblib")
-    scalers = joblib.load(latest_exp / "scalers.joblib")
-    
-    with open(latest_exp / "rf_features.json", "r") as f:
+    with open(Paths.PROC_FEATURES_RF, "r") as f:
         features_rf = json.load(f)
-        
-    with open(latest_exp / "thresholds.json", "r") as f:
-        thresholds = json.load(f)
         
     context_cols = [c for c in features_rf if c.startswith(DatasetKeys.USO + '_')]
     
-    return rf_model, scalers, features_rf, context_cols, thresholds
+    return rf_model, features_rf, context_cols
 
 
 def render_whatif(df: pd.DataFrame, barrio: str | None = None):
@@ -89,7 +77,7 @@ def render_whatif(df: pd.DataFrame, barrio: str | None = None):
 
     # ─── Carga de Contexto IA ───────────────────────────────────────────
     try:
-        rf_model, scalers, features_rf, context_cols, thresholds = get_simulation_context()
+        rf_model, features_rf, context_cols = get_simulation_context()
     except Exception as e:
         st.error(f"Error cargando contexto de simulación: {e}")
         return
@@ -101,22 +89,20 @@ def render_whatif(df: pd.DataFrame, barrio: str | None = None):
             return (lo, hi) if lo < hi else (default_lo, default_hi)
         return (default_lo, default_hi)
 
-    temp_range    = _safe_range(DatasetKeys.TEMP_MEDIA,      5.0,  40.0)
-    precip_range  = _safe_range(DatasetKeys.PRECIPITACION,   0.0, 150.0)
-    vt_range      = _safe_range(DatasetKeys.PCT_VT_BARRIO_INE,   0.0, 80.0)
-    ratio_range   = _safe_range(DatasetKeys.CONSUMO_RATIO,   0.1,  30.0)
-    vt_sin_range  = _safe_range(DatasetKeys.PCT_VT_SIN_REGISTRAR, 0.0, 50.0)
-    ndvi_range    = _safe_range(DatasetKeys.NDVI_SATELITE, 0.0, 1.0)
-    hoteles_range = _safe_range(DatasetKeys.PLAZAS_HOTELES_BARRIO_GVA, 0.0, 5000.0)
-
-    # Valores por defecto: media del barrio en los últimos 12 meses
-    def_temp   = df_b[DatasetKeys.TEMP_MEDIA].mean() if DatasetKeys.TEMP_MEDIA in df_b.columns else np.mean(temp_range)
-    def_precip = df_b[DatasetKeys.PRECIPITACION].mean() if DatasetKeys.PRECIPITACION in df_b.columns else np.mean(precip_range)
-    def_vt     = df_b[DatasetKeys.PCT_VT_BARRIO_INE].mean() if DatasetKeys.PCT_VT_BARRIO_INE in df_b.columns else np.mean(vt_range)
-    def_ratio  = df_b[DatasetKeys.CONSUMO_RATIO].mean() if DatasetKeys.CONSUMO_RATIO in df_b.columns else np.mean(ratio_range)
-    def_vt_sin = df_b[DatasetKeys.PCT_VT_SIN_REGISTRAR].mean() if DatasetKeys.PCT_VT_SIN_REGISTRAR in df_b.columns else np.mean(vt_sin_range)
-    def_ndvi   = df_b[DatasetKeys.NDVI_SATELITE].mean() if DatasetKeys.NDVI_SATELITE in df_b.columns else np.mean(ndvi_range)
-    def_hoteles= df_b[DatasetKeys.PLAZAS_HOTELES_BARRIO_GVA].mean() if DatasetKeys.PLAZAS_HOTELES_BARRIO_GVA in df_b.columns else np.mean(hoteles_range)
+    temp_range     = _safe_range(DatasetKeys.TEMP_MEDIA,           5.0, 40.0)
+    precip_range   = _safe_range(DatasetKeys.PRECIPITACION,        0.0, 150.0)
+    ndvi_range     = _safe_range(DatasetKeys.NDVI_SATELITE,        0.0, 1.0)
+    vt_sin_range   = _safe_range(DatasetKeys.PCT_VT_SIN_REGISTRAR, 0.0, 40.0)
+    festivos_range = _safe_range(DatasetKeys.PCT_FESTIVOS,         0.0, 15.0)
+    ratio_range    = _safe_range(DatasetKeys.CONSUMO_RATIO,        0.1, 10.0)
+    
+    def_temp     = df_b[DatasetKeys.TEMP_MEDIA].mean()
+    def_precip   = df_b[DatasetKeys.PRECIPITACION].mean()
+    def_ndvi     = df_b[DatasetKeys.NDVI_SATELITE].mean()
+    def_vt_sin   = df_b[DatasetKeys.PCT_VT_SIN_REGISTRAR].mean() if DatasetKeys.PCT_VT_SIN_REGISTRAR in df_b.columns else 0.0
+    def_festivos = df_b[DatasetKeys.PCT_FESTIVOS].mean() if DatasetKeys.PCT_FESTIVOS in df_b.columns else 0.0
+    def_ratio    = df_b[DatasetKeys.CONSUMO_RATIO].mean()
+    
 
     # ─── Sliders ─────────────────────────────────────────────────────────
     st.markdown("#### Modificación de Features")
@@ -126,12 +112,12 @@ def render_whatif(df: pd.DataFrame, barrio: str | None = None):
     with col1:
         temp_val = st.slider(
             "Temperatura Media (°C)",
-            min_value=temp_range[0], max_value=temp_range[1],
+            min_value=float(temp_range[0]), max_value=float(temp_range[1]),
             value=float(def_temp), step=0.5, key="wif_temp",
         )
         precip_val = st.slider(
             "Precipitación (mm)",
-            min_value=precip_range[0], max_value=precip_range[1],
+            min_value=float(precip_range[0]), max_value=float(precip_range[1]),
             value=float(def_precip), step=1.0, key="wif_precip",
         )
         ndvi_val = st.slider(
@@ -141,26 +127,21 @@ def render_whatif(df: pd.DataFrame, barrio: str | None = None):
         )
 
     with col2:
-        vt_val = st.slider(
-            "% VT Barrio Oficial",
-            min_value=float(vt_range[0]), max_value=float(vt_range[1]),
-            value=float(def_vt), step=0.5, key="wif_vt",
-        )
         vt_sin_val = st.slider(
             "% VT Sin Registrar (Ilegales)",
             min_value=float(vt_sin_range[0]), max_value=float(vt_sin_range[1]),
             value=float(def_vt_sin), step=0.5, key="wif_vtsin",
         )
-        hoteles_val = st.slider(
-            "Plazas Hoteleras",
-            min_value=float(hoteles_range[0]), max_value=float(hoteles_range[1]),
-            value=float(def_hoteles), step=10.0, key="wif_hoteles",
+        festivos_val = st.slider(
+            "Festividades (% mes)",
+            min_value=float(festivos_range[0]), max_value=float(festivos_range[1]),
+            value=float(def_festivos), step=0.5, key="wif_festivos",
         )
         
     with col3:
         ratio_val = st.slider(
             "Ratio Consumo Modificado",
-            min_value=ratio_range[0], max_value=ratio_range[1],
+            min_value=float(ratio_range[0]), max_value=float(ratio_range[1]),
             value=float(def_ratio), step=0.1, key="wif_ratio",
         )
 
@@ -174,32 +155,31 @@ def render_whatif(df: pd.DataFrame, barrio: str | None = None):
     if DatasetKeys.PRECIPITACION in df_sim.columns: 
         if def_precip != 0: df_sim[DatasetKeys.PRECIPITACION] *= (precip_val / def_precip)
         else: df_sim[DatasetKeys.PRECIPITACION] = np.clip(df_sim[DatasetKeys.PRECIPITACION] + (precip_val - def_precip), 0, None)
-    if DatasetKeys.PCT_VT_BARRIO_INE in df_sim.columns: 
-        df_sim[DatasetKeys.PCT_VT_BARRIO_INE] = np.clip(df_sim[DatasetKeys.PCT_VT_BARRIO_INE] + (vt_val - def_vt), 0, 100)
     if DatasetKeys.PCT_VT_SIN_REGISTRAR in df_sim.columns: 
         df_sim[DatasetKeys.PCT_VT_SIN_REGISTRAR] = np.clip(df_sim[DatasetKeys.PCT_VT_SIN_REGISTRAR] + (vt_sin_val - def_vt_sin), 0, 100)
     if DatasetKeys.NDVI_SATELITE in df_sim.columns: 
         if def_ndvi != 0: df_sim[DatasetKeys.NDVI_SATELITE] = np.clip(df_sim[DatasetKeys.NDVI_SATELITE] * (ndvi_val / def_ndvi), 0, 1)
         else: df_sim[DatasetKeys.NDVI_SATELITE] = np.clip(df_sim[DatasetKeys.NDVI_SATELITE] + (ndvi_val - def_ndvi), 0, 1)
-    if DatasetKeys.PLAZAS_HOTELES_BARRIO_GVA in df_sim.columns: 
-        if def_hoteles != 0: df_sim[DatasetKeys.PLAZAS_HOTELES_BARRIO_GVA] *= (hoteles_val / def_hoteles)
-        else: df_sim[DatasetKeys.PLAZAS_HOTELES_BARRIO_GVA] = np.clip(df_sim[DatasetKeys.PLAZAS_HOTELES_BARRIO_GVA] + (hoteles_val - def_hoteles), 0, None)
+    if DatasetKeys.PCT_FESTIVOS in df_sim.columns: 
+        if def_festivos != 0: df_sim[DatasetKeys.PCT_FESTIVOS] *= (festivos_val / def_festivos)
+        else: df_sim[DatasetKeys.PCT_FESTIVOS] = np.clip(df_sim[DatasetKeys.PCT_FESTIVOS] + (festivos_val - def_festivos), 0, 100)
     if DatasetKeys.CONSUMO_RATIO in df_sim.columns: 
         if def_ratio != 0: df_sim[DatasetKeys.CONSUMO_RATIO] = np.clip(df_sim[DatasetKeys.CONSUMO_RATIO] * (ratio_val / def_ratio), 0.1, None)
         else: df_sim[DatasetKeys.CONSUMO_RATIO] = np.clip(df_sim[DatasetKeys.CONSUMO_RATIO] + (ratio_val - def_ratio), 0.1, None)
 
     # ─── 1. Inferencia del Modelo Físico (RF) ────────────────────────────
+    # Aplicamos el mismo preprocesamiento que en ModeloFisico._calculate_ml_impact
     df_sim_ml = pd.get_dummies(df_sim, columns=[DatasetKeys.USO])
+    
+    # Asegurar que todas las columnas de contexto de USO existen
     for c in context_cols:
         if c not in df_sim_ml.columns:
             df_sim_ml[c] = 0
             
-    if DatasetKeys.MES not in df_sim_ml.columns:
-        df_sim_ml[DatasetKeys.MES] = df_sim_ml[DatasetKeys.FECHA].dt.month
-    df_sim_ml['mes_temp'] = df_sim_ml[DatasetKeys.FECHA].dt.month
-    
+    # La Predicción Fourier ya viene en el DF base que recibe render_whatif
+    # Si no existiera (fallback), usamos el consumo como base
     if DatasetKeys.PREDICCION_FOURIER not in df_sim_ml.columns:
-        df_sim_ml[DatasetKeys.PREDICCION_FOURIER] = df_sim_ml[DatasetKeys.CONSUMO_RATIO] * 0.95
+        df_sim_ml[DatasetKeys.PREDICCION_FOURIER] = df_sim_ml[DatasetKeys.CONSUMO_RATIO]
         
     X_sim = df_sim_ml[features_rf].fillna(0)
     impacto_sim = rf_model.predict(X_sim)
@@ -272,10 +252,9 @@ def render_whatif(df: pd.DataFrame, barrio: str | None = None):
         feat_names_friendly = {
             DatasetKeys.TEMP_MEDIA: "Temperatura Media",
             DatasetKeys.PRECIPITACION: "Precipitación",
-            DatasetKeys.PCT_VT_BARRIO_INE: "Turismo Oficial (% VT)",
             DatasetKeys.PCT_VT_SIN_REGISTRAR: "Pisos Ilegales (% VT)",
-            DatasetKeys.PLAZAS_HOTELES_BARRIO_GVA: "Plazas Hoteleras",
-            DatasetKeys.NDVI_SATELITE: "Índice Vegetación (NDVI)"
+            DatasetKeys.NDVI_SATELITE: "Índice Vegetación (NDVI)",
+            DatasetKeys.PCT_FESTIVOS: "Festividades (% mes)"
         }
         
         imp_dict = {}

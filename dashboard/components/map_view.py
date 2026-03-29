@@ -22,7 +22,7 @@ COLORMAP_STEPS  = ["#0d1b2a", "#1b4965", "#2d6a4f", "#52b788", "#d9ed92",
                    "#f4a261", "#e76f51", "#c1121f"]
 
 
-def render_map(df_barrio: pd.DataFrame, feature_col: str, gdf=None, alert_col: str=DatasetKeys.ALERTA_TURISTICA_ILEGAL) -> dict:
+def render_map(df_barrio: pd.DataFrame, feature_col: str, gdf=None, alert_col: str = None) -> dict:
     """
     Dibuja el mapa de calor interactivo.
 
@@ -134,10 +134,9 @@ def _add_choropleth(m, gdf, df_barrio, feature_col, alert_col) -> bool:
         
     gdf_merged[feature_col] = gdf_merged[feature_col].fillna(0)
     
-    for col in [DatasetKeys.FRAUD_RISK_SCORE, DatasetKeys.PHYSICS_SCORE, alert_col]:
+    for col in [DatasetKeys.Z_ERROR_FINAL, alert_col]:
         if col not in gdf_merged.columns:
             gdf_merged[col] = 0.0
-            
 
     # 2. ESCALADO ROBUSTO CONTRA OUTLIERS
     vmin = gdf_merged[feature_col].quantile(0.05)
@@ -170,8 +169,8 @@ def _add_choropleth(m, gdf, df_barrio, feature_col, alert_col) -> bool:
         highlight_function=highlight_fn,
         tooltip=folium.GeoJsonTooltip(
             fields=["barrio_limpio", feature_col,
-                    DatasetKeys.FRAUD_RISK_SCORE, DatasetKeys.PHYSICS_SCORE, alert_col],
-            aliases=["Barrio:", f"{feature_col}:", "Riesgo Fraude:", "Score Físico:", "Alertas Activas:"],
+                    DatasetKeys.Z_ERROR_FINAL, alert_col],
+            aliases=["Barrio:", f"{feature_col}:", "Z-Score Residual:", "Alertas Activas:"],
             localize=True,
             style=("background-color: #0d1b2a; color: #e0e0e0; font-family: 'Inter', sans-serif; "
                    "font-size: 13px; padding: 10px; border: 1px solid #4cc9f0; border-radius: 6px;")
@@ -204,7 +203,7 @@ def _add_choropleth(m, gdf, df_barrio, feature_col, alert_col) -> bool:
                         fill=True,
                         fill_color=colormap(val),
                         fill_opacity=0.75,
-                        tooltip=f"<b>{barrio} (Polígono)</b><br>{feature_col}: {val:.1f}<br>Riesgo Fraude: {row.get(DatasetKeys.FRAUD_RISK_SCORE, 0):.1f}%<br>Alertas Activas: {int(row.get(alert_col, 0))}",
+                        tooltip=f"<b>{barrio} (Polígono)</b><br>{feature_col}: {val:.1f}<br>Z-Score Residual: {row.get(DatasetKeys.Z_ERROR_FINAL, 0):.1f}<br>Alertas Activas: {int(row.get(alert_col, 0))}",
                     ).add_to(m)
 
     return True

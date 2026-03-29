@@ -156,7 +156,7 @@ class WaterPreprocessor:
         df_scaled, scalers = WaterPreprocessor._scale_features(df_not_scaled)
         
         # Eliminamos columnas NO utilizadas
-        allways_used = [DatasetKeys.FECHA, DatasetKeys.BARRIO, DatasetKeys.NUM_CONTRATOS, DatasetKeys.USO]
+        allways_used = [DatasetKeys.FECHA, DatasetKeys.BARRIO, DatasetKeys.NUM_CONTRATOS, DatasetKeys.USO, DatasetKeys.CONSUMO]
         df_scaled = df_scaled[allways_used + list(FeatureConfig.PIPELINE_FEATURES.keys())]
 
         not_scaled_columns = [c for c in list(FeatureConfig.PIPELINE_FEATURES.keys()) if c in df_not_scaled.columns]

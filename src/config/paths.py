@@ -67,6 +67,9 @@ class Paths:
     PROC_CSV_AMAEM_SCALED     = PROC_DIR / "AMAEM-2022-2024_scaled.csv"
     PROC_CSV_AMAEM_NOT_SCALED = PROC_DIR / "AMAEM-2022-2024_not_scaled.csv"
     
+    PROC_MODEL_RF    = PROC_DIR / "rf_model.joblib"
+    PROC_FEATURES_RF = PROC_DIR / "rf_features.json"
+    
     ## --- FUENTES EXTERNAS --- ##
 
     # --- GVA (Generalitat Valenciana - Turismo) --- #
