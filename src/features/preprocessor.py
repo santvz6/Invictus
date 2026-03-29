@@ -10,13 +10,12 @@ de Deep Learning (LSTM Autoencoders).
 import pandas as pd
 import numpy as np
 
-from src.water2fraud.features.ine_tourism_processor import INETourismProcessor
-from src.water2fraud.features.sentinel_processor import SentinelProcessor
-from src.water2fraud.features.fisicos_processor import FisicosProcessor
-from src.water2fraud.features.aemet_processor import AEMETProcessor
-from src.water2fraud.features.amaem_processor import AMAEMProcessor
-from src.water2fraud.features.gva_processor import GVAProcessor
-from src.water2fraud.features.holiday_barrio_processor import HolidayBarrioProcessor
+from src.features.ine_tourism_processor import INETourismProcessor
+from src.features.sentinel_processor import SentinelProcessor
+from src.features.aemet_processor import AEMETProcessor
+from src.features.amaem_processor import AMAEMProcessor
+from src.features.gva_processor import GVAProcessor
+from src.features.holiday_barrio_processor import HolidayBarrioProcessor
 from src.config import get_logger, DatasetKeys, Paths
 
 # Logger central del pipeline de características
@@ -72,53 +71,14 @@ class WaterPreprocessor:
     }
 
     @staticmethod
-    def create_sequences(df: pd.DataFrame, sequence_length=12) -> tuple[np.ndarray, pd.DataFrame, list[str]]:
-        """
-        Transforma datos tabulares en tensores 3D para redes recurrentes.
-        
-        Aplica un enfoque de ventana deslizante por cada segmento (Barrio, Uso), 
-        asegurando que el modelo aprenda patrones secuenciales de consumo.
-
-        Args:
-            df (pd.DataFrame): DataFrame completamente preprocesado.
-            sequence_length (int): Longitud de la memoria temporal (meses).
-
-        Returns:
-            tuple: (X (tensor 3D), meta_df (referencias de barrio/fecha), feature_cols (nombres)).
-        """
-        logger.info(f"Generando secuencias temporales de tamaño {sequence_length} meses...")
-        
-        # Ordenación rigurosa necesaria para la coherencia de la ventana temporal
-        df = df.sort_values(by=[DatasetKeys.BARRIO, DatasetKeys.USO, DatasetKeys.FECHA])        
-        
-        # Selección dinámica de columnas presentes en el dataset
-        feature_cols = [col for col in WaterPreprocessor.FEATURES if col in df.columns]
-
-        sequences = []
-        metadata = [] 
-        
-        # Iteración por clústers geográficos y de uso para evitar solapamientos entre barrios
-        for (barrio, uso), group in df.groupby([DatasetKeys.BARRIO, DatasetKeys.USO]):
-            group_data = group[feature_cols].values
-            
-            # Construcción de ventanas deslizantes
-            for i in range(len(group_data) - sequence_length + 1):
-                seq = group_data[i : i + sequence_length]
-                sequences.append(seq)
-                
-                # Anclaje de metadatos al último mes de la ventana (momento de la predicción)
-                last_row = group.iloc[i + sequence_length - 1]
-                metadata.append({
-                    DatasetKeys.BARRIO: last_row[DatasetKeys.BARRIO],
-                    DatasetKeys.USO: last_row[DatasetKeys.USO],
-                    DatasetKeys.FECHA: last_row[DatasetKeys.FECHA]
-                })
-                
-        X = np.array(sequences) 
-        meta_df = pd.DataFrame(metadata)
-        
-        logger.info(f"Generadas {X.shape[0]} secuencias de forma {X.shape[1]}x{X.shape[2]}")
-        return X, meta_df, feature_cols
+    def _load_data() -> pd.DataFrame:
+        input_path = Paths.RAW_CSV_AMAEM
+        if not input_path.exists():
+            logger.error(f"Error crítico: No se encuentra el archivo en {input_path}")
+            raise FileNotFoundError(f"Error crítico: No se encuentra el archivo en {input_path}")
+        logger.info(f"Cargando datos desde {input_path}...")
+        return pd.read_csv(input_path)
+    
 
     @staticmethod
     def _scale_features(df: pd.DataFrame) -> tuple[pd.DataFrame, dict]:
@@ -137,9 +97,6 @@ class WaterPreprocessor:
                 if scale_type == WaterPreprocessor.ROBUST:
                     scaler = RobustScaler()
                     
-                    # Aplicar logaritmo natural a la variable de consumo
-                    df[col] = np.log1p(df[col])
-                    
                     df[col] = scaler.fit_transform(df[[col]])
                     scalers[col] = scaler
                 elif scale_type == WaterPreprocessor.MIN_MAX:
@@ -155,15 +112,15 @@ class WaterPreprocessor:
 
         return df, scalers
 
+
     @staticmethod
-    def _engineer_features(df: pd.DataFrame) -> pd.DataFrame:
+    def _INE_GVA_gap(df: pd.DataFrame) -> pd.DataFrame:
         """
         Ejecuta lógica de ingeniería de características complejas basada en el 'Gap' de legalidad.
         
         Calcula la discrepancia entre el turismo reportado (INE) y el registrado (GVA), 
         distribuyendo pesos municipales hacia el detalle de barrio.
         """
-        logger.info("Calculando variables derivadas (Reparto ponderado GVA e Ilegalidad)...")
         df = df.copy()
 
         # Deduplicación para cálculo de cuotas geográficas puras
@@ -208,15 +165,13 @@ class WaterPreprocessor:
         df_not_scaled.to_csv(Paths.PROC_CSV_AMAEM_NOT_SCALED, index=False)
         df_scaled.to_csv(Paths.PROC_CSV_AMAEM_SCALED, index=False)
     
+
     @staticmethod
-    def process_raw_data(df: pd.DataFrame) -> tuple[pd.DataFrame, dict]:
+    def process_all_data() -> tuple[pd.DataFrame, dict]:
         """
-        Orquestación maestra del pipeline de datos 'Water2Fraud'.
-        
-        Encadena secuencialmente todos los procesadores especializados y culmina con 
-        la ingeniería de características y el escalado final.
+        ...
         """
-        df_not_scaled = df.copy()
+        df_not_scaled = WaterPreprocessor._load_data()
         
         # Fase A: Ingesta y limpieza base (Agua)
         df_not_scaled = AMAEMProcessor.process(df_not_scaled)
@@ -233,12 +188,19 @@ class WaterPreprocessor:
         df_not_scaled = HolidayBarrioProcessor.process(df_not_scaled)
 
         # Fase E: Ingeniería de Variables de Fraude (Gap de Ilegalidad)
-        df_not_scaled = WaterPreprocessor._engineer_features(df_not_scaled)
+        df_not_scaled = WaterPreprocessor._INE_GVA_gap(df_not_scaled)
 
         # Fase E: Normalización para Deep Learning
         df_scaled, scalers = WaterPreprocessor._scale_features(df_not_scaled)
         
+        # Eliminamos columnas NO utilizadas
+        allways_used = [DatasetKeys.FECHA, DatasetKeys.BARRIO, DatasetKeys.NUM_CONTRATOS, DatasetKeys.USO]
+        df_scaled = df_scaled[allways_used + list(WaterPreprocessor.FEATURES.keys())]
+
+        not_scaled_columns = [c for c in list(WaterPreprocessor.FEATURES.keys()) if c in df_not_scaled.columns]
+        df_not_scaled      = df_not_scaled[allways_used + not_scaled_columns]
+
         # Persistencia del estado final
         WaterPreprocessor._save_processed_df(df_not_scaled, df_scaled)
 
-        return df_scaled, scalers
+        return df_scaled, df_not_scaled, scalers

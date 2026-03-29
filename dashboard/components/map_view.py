@@ -134,12 +134,10 @@ def _add_choropleth(m, gdf, df_barrio, feature_col, alert_col) -> bool:
         
     gdf_merged[feature_col] = gdf_merged[feature_col].fillna(0)
     
-    for col in [DatasetKeys.RECONSTRUCTION_ERROR, DatasetKeys.FRAUD_RISK_SCORE, DatasetKeys.AE_SCORE_WEIGHTED, DatasetKeys.PHYSICS_SCORE, alert_col]:
+    for col in [DatasetKeys.FRAUD_RISK_SCORE, DatasetKeys.PHYSICS_SCORE, alert_col]:
         if col not in gdf_merged.columns:
             gdf_merged[col] = 0.0
             
-    if DatasetKeys.RECONSTRUCTION_ERROR in gdf_merged.columns:
-        gdf_merged[DatasetKeys.RECONSTRUCTION_ERROR] = gdf_merged[DatasetKeys.RECONSTRUCTION_ERROR].round(3)
 
     # 2. ESCALADO ROBUSTO CONTRA OUTLIERS
     vmin = gdf_merged[feature_col].quantile(0.05)
@@ -172,8 +170,8 @@ def _add_choropleth(m, gdf, df_barrio, feature_col, alert_col) -> bool:
         highlight_function=highlight_fn,
         tooltip=folium.GeoJsonTooltip(
             fields=["barrio_limpio", feature_col,
-                    DatasetKeys.FRAUD_RISK_SCORE, DatasetKeys.AE_SCORE_WEIGHTED, DatasetKeys.PHYSICS_SCORE, alert_col],
-            aliases=["Barrio:", f"{feature_col}:", "Riesgo Fraude:", "Score IA:", "Score Físico:", "Alertas Activas:"],
+                    DatasetKeys.FRAUD_RISK_SCORE, DatasetKeys.PHYSICS_SCORE, alert_col],
+            aliases=["Barrio:", f"{feature_col}:", "Riesgo Fraude:", "Score Físico:", "Alertas Activas:"],
             localize=True,
             style=("background-color: #0d1b2a; color: #e0e0e0; font-family: 'Inter', sans-serif; "
                    "font-size: 13px; padding: 10px; border: 1px solid #4cc9f0; border-radius: 6px;")

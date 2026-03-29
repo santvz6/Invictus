@@ -18,10 +18,10 @@ _INFORMES_MOCK = {
 **Análisis de Barrio**
 
 **Resumen Ejecutivo:**
-El modelo LSTM-Autoencoder ha procesado las secuencias temporales de consumo de agua de este barrio y ha identificado patrones de comportamiento relevantes.
+El sistema Invictus ha procesado los patrones de consumo de agua de este barrio mediante el análisis de estacionalidad física (Fourier) e impacto de factores exógenos (Random Forest).
 
 **Anomalías Detectadas:**
-El error de reconstrucción promedio se sitúa dentro de los rangos normales para este clúster de comportamiento. No se han identificado violaciones graves de las restricciones físicas.
+El desvío respecto al consumo físico esperado se sitúa dentro de los rangos normales para este perfil de barrio. No se han identificado violaciones graves de las restricciones físicas o climáticas.
 
 **Indicadores Turísticos:**
 Los datos de Viviendas Turísticas registradas (GVA) están en línea con el consumo hídrico observado. No se detecta un GAP significativo respecto a las estimaciones INE.
@@ -95,7 +95,7 @@ def _build_dynamic_prompt(barrio: str, df: pd.DataFrame) -> str:
         f"  - Turismo Oficial: {vt_pct:.1f}% | Estimación Ilegales (Gap): {ilegal_pct:.1f}%\n"
         f"  - Consumo Real: {consumo_real:,.0f} m3 | Físico Esperado: {consumo_esperado:,.0f} m3\n"
         f"  - Desvío Total: {consumo_real - consumo_esperado:,.0f} m3 (Pico detectado en: {mes_pico})\n"
-        f"  - Alertas de Fraude IA (Meses): {int(alertas)}\n\n"
+        f"  - Alertas de Fraude Físico (Meses): {int(alertas)}\n\n"
         f"**Instrucciones**: NO inventes datos. Usa MÁXIMO 3 PÁRRAFOS en formato Markdown.\n"
     )
     return contexto

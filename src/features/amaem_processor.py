@@ -79,7 +79,14 @@ class AMAEMProcessor:
             df (pd.DataFrame): DataFrame original cargado desde CSV raw.
 
         Returns:
-            pd.DataFrame: DataFrame limpio, tipificado y con métricas base calculadas.
+            pd.DataFrame: DataFrame limpio, tipificado y con métricas base calculadas:
+                - BARRIO
+                - USO
+                - FECHA
+                - CONSUMO
+                - CONSUMO_RATIO
+                - MES
+                - NUM_CONTRATOS
         """
         logger.info("Iniciando preprocesamiento base de datos AMAEM...")
         df = df.copy()

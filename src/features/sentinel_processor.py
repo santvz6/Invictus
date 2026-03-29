@@ -8,10 +8,9 @@ información sobre la salud de la vegetación y su posible impacto en el consumo
 
 import pandas as pd
 import logging
-from src.config import DatasetKeys, Paths
+from src.config import DatasetKeys, Paths, get_logger
 
-# Configuración del logger local
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 class SentinelProcessor:
     """
@@ -31,7 +30,8 @@ class SentinelProcessor:
             df (pd.DataFrame): Dataset principal de AMAEM.
 
         Returns:
-            pd.DataFrame: Dataset enriquecido con la columna de NDVI.
+            pd.DataFrame: Dataset enriquecido con la columna de NDVI:
+                - NDVI_SATELITE
         """
         logger.info("Iniciando procesamiento de NDVI (Sentinel)...")
         

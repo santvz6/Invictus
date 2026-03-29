@@ -10,10 +10,9 @@ import pandas as pd
 import numpy as np
 import logging
 
-from src.config import DatasetKeys, Paths
+from src.config import DatasetKeys, Paths, get_logger
 
-# Logger especializado para el seguimiento de la carga de datos del INE
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 class INETourismProcessor:
     """
@@ -33,7 +32,11 @@ class INETourismProcessor:
             df_amaem (pd.DataFrame): Dataset principal de AMAEM.
 
         Returns:
-            pd.DataFrame: Dataset enriquecido con métricas de VT, ocupación y pernoctaciones.
+            pd.DataFrame: Dataset enriquecido con métricas de VT, ocupación y pernoctaciones:
+                - NUM_VT_BARRIO_INE
+                - PCT_VT_BARRIO_INE
+                - OCUP_VT_PROV_INE
+                - PERNOCT_VT_PROV_INE
         """
         logger.info("Iniciando enriquecimiento con datos turísticos del INE...")
         

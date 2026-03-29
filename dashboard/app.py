@@ -20,7 +20,7 @@ from dashboard.data_loader import (
     aggregate_by_barrio, FEATURES_DISPONIBLES, BARRIOS_ALICANTE,
 )
 from dashboard.components.map_view       import render_map
-from dashboard.components.anomaly_panel  import render_anomaly_panel
+from dashboard.components.map_view       import render_map
 from dashboard.components.whatif_simulator import render_whatif
 from dashboard.components.llm_report     import render_llm_report
 
@@ -235,7 +235,7 @@ st.markdown("""
         🌊 INVICTUS — Dashboard de Detección de Fraude Turístico
     </h1>
     <p style="color:#888; font-size:13px; margin-top:4px;">
-        Detección de viviendas turísticas ilegales en Alicante · LSTM-Autoencoder + Reglas Físicas
+        Detección de viviendas turísticas ilegales en Alicante · Análisis Físico y Estadístico
     </p>
 </div>
 """, unsafe_allow_html=True)
@@ -294,24 +294,21 @@ with tab_mapa:
                 st.rerun()
 
     with col_panel:
-        if st.session_state.barrio_seleccionado:
-            render_anomaly_panel(df_filtered, st.session_state.barrio_seleccionado)
-        else:
-            st.markdown("""
-            <div style="
-                height: 550px; display: flex; align-items: center;
-                justify-content: center; text-align: center;
-                background: rgba(255,255,255,0.03);
-                border: 1px dashed rgba(76,201,240,0.3);
-                border-radius: 12px; color: #668;
-            ">
-                <div>
-                    <div style="font-size: 14px; color: #aaa;">
-                        Haz clic en un barrio<br>del mapa para ver<br>el panel de anomalías
-                    </div>
+        st.markdown("""
+        <div style="
+            height: 550px; display: flex; align-items: center;
+            justify-content: center; text-align: center;
+            background: rgba(255,255,255,0.03);
+            border: 1px dashed rgba(76,201,240,0.3);
+            border-radius: 12px; color: #668;
+        ">
+            <div>
+                <div style="font-size: 14px; color: #aaa;">
+                    Información detallada<br>del barrio<br>seleccionado
                 </div>
             </div>
-            """, unsafe_allow_html=True)
+        </div>
+        """, unsafe_allow_html=True)
 
 
 # ─── TAB 2: WHAT-IF ─────────────────────────────────────────────────────────

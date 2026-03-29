@@ -47,8 +47,6 @@ class DatasetKeys:
     PLAZAS_HOTELES_BARRIO_GVA = "plazas_hoteles_barrio_gva"
 
     # --- Identificadores resultantes de Modelos de ML y Pipelines ---
-    CLUSTER                 = "cluster"
-    RECONSTRUCTION_ERROR    = "reconstruction_error"
     
     # Métricas de detección de anomalías
     RESIDUO_POSITIVO        = "residuo_positivo"
@@ -57,10 +55,6 @@ class DatasetKeys:
     
     # Flags Booleanos de Anomalía
     IS_PHYSICS_ANOMALY      = "is_physics_anomaly"
-    IS_GENERAL_ANOMALY      = "is_general_anomaly"
-    IS_WEIGHTED_ANOMALY     = "is_weighted_anomaly"
-    AE_SCORE_GENERAL        = "ae_score_general"
-    AE_SCORE_WEIGHTED       = "ae_score_weighted"
     PHYSICS_SCORE           = "physics_score"   # Escala 0-100 (100 = Umbral de Alerta)
     
     # --- Factores Sociales y de Calendario (Festivos) ---

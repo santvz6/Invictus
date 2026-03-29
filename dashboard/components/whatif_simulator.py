@@ -18,7 +18,6 @@ from sklearn.preprocessing import MinMaxScaler, RobustScaler
 
 from src.config import DatasetKeys, Paths
 from src.water2fraud.features.preprocessor import WaterPreprocessor
-from src.water2fraud.models.autoencoder import LSTMAutoencoder
 
 @st.cache_resource(show_spinner="Cargando motores IA y Físico (Caché)...")
 def get_simulation_context():
@@ -47,27 +46,7 @@ def get_simulation_context():
         
     context_cols = [c for c in features_rf if c.startswith(DatasetKeys.USO + '_')]
     
-    # 2. Precargar todos los Autoencoders LSTM en memoria
-    lstm_models = {}
-    feature_cols = list(WaterPreprocessor.FEATURES.keys())
-    
-    for model_path in latest_exp.glob("ae_cluster_*.pth"):
-        cluster_id = model_path.stem.split("_")[-1]
-        
-        checkpoint = torch.load(model_path, map_location="cpu", weights_only=False)
-        
-        model_ae = LSTMAutoencoder(
-            num_features=checkpoint["num_features"],
-            hidden_dim=checkpoint["hidden_dim"],
-            latent_dim=checkpoint["latent_dim"],
-            seq_len=checkpoint["seq_len"]
-        )
-        model_ae.load_state_dict(checkpoint["state_dict"])
-        model_ae.eval()
-        
-        lstm_models[int(cluster_id)] = model_ae
-                
-    return rf_model, scalers, features_rf, context_cols, thresholds, lstm_models
+    return rf_model, scalers, features_rf, context_cols, thresholds
 
 
 def render_whatif(df: pd.DataFrame, barrio: str | None = None):
@@ -110,7 +89,7 @@ def render_whatif(df: pd.DataFrame, barrio: str | None = None):
 
     # ─── Carga de Contexto IA ───────────────────────────────────────────
     try:
-        rf_model, scalers, features_rf, context_cols, thresholds, lstm_models = get_simulation_context()
+        rf_model, scalers, features_rf, context_cols, thresholds = get_simulation_context()
     except Exception as e:
         st.error(f"Error cargando contexto de simulación: {e}")
         return
@@ -226,63 +205,6 @@ def render_whatif(df: pd.DataFrame, barrio: str | None = None):
     impacto_sim = rf_model.predict(X_sim)
     consumo_fisico_sim = df_sim_ml[DatasetKeys.PREDICCION_FOURIER] + impacto_sim
 
-    # ─── 2. Inferencia del Modelo de IA (LSTM-AE) ────────────────────────
-    seq_scaled = []
-    # Extraemos SIEMPRE todas las features en el orden exacto del entrenamiento
-    feature_cols = list(WaterPreprocessor.FEATURES.keys())
-    
-    for col in feature_cols:
-        if col == DatasetKeys.MES_SIN:
-            meses = df_sim[DatasetKeys.FECHA].dt.month
-            val = ((np.sin(2 * np.pi * meses / 12) + 1) / 2).values.reshape(-1, 1)
-            seq_scaled.append(val)
-        elif col == DatasetKeys.MES_COS:
-            meses = df_sim[DatasetKeys.FECHA].dt.month
-            val = ((np.cos(2 * np.pi * meses / 12) + 1) / 2).values.reshape(-1, 1)
-            seq_scaled.append(val)
-        elif col in scalers and col in df_sim.columns:
-            # Aplicar log1p ANTES de transformar si el escalador fue entrenado así (RobustScaler en Ratio)
-            val_to_scale = df_sim[[col]]
-            if col == DatasetKeys.CONSUMO_RATIO:
-                val_to_scale = np.log1p(val_to_scale)
-                
-            val = scalers[col].transform(val_to_scale)
-            seq_scaled.append(val)
-        else:
-            # Relleno de seguridad para mantener la dimensión (no debería ocurrir en core features)
-            val = np.zeros((len(df_sim), 1))
-            seq_scaled.append(val)
-                
-    seq_tensor = np.hstack(seq_scaled)
-    
-    cluster_id = df_b[DatasetKeys.CLUSTER].iloc[0] if DatasetKeys.CLUSTER in df_b.columns else 0
-    model_ae = lstm_models.get(int(cluster_id))
-
-    if model_ae:
-        with torch.no_grad():
-            t_in = torch.tensor(seq_tensor, dtype=torch.float32).unsqueeze(0)
-            reconst = model_ae(t_in).squeeze(0).numpy()
-            
-        # Desescalar el ratio reconstruido
-        if DatasetKeys.CONSUMO_RATIO in feature_cols:
-            idx_ratio = feature_cols.index(DatasetKeys.CONSUMO_RATIO)
-            reconst_ratio_scaled = reconst[:, idx_ratio].reshape(-1, 1)
-            consumo_ae_log = scalers[DatasetKeys.CONSUMO_RATIO].inverse_transform(reconst_ratio_scaled).flatten()
-            # Invertir log1p, asegurar no negatividad y evitar overflow (clip a 20)
-            consumo_ae_sim = np.maximum(0, np.expm1(np.clip(consumo_ae_log, -np.inf, 20)))
-        else:
-            consumo_ae_sim = df_sim[DatasetKeys.CONSUMO_RATIO].values
-            
-        # Calcular puntuación de anomalía estandarizada (AE_SCORE) con el JSON nativo
-        ae_mae = np.mean(np.abs(reconst - seq_tensor))
-        umbral = thresholds.get(str(int(cluster_id)), 0.1)
-        if umbral == 0: umbral = 0.1
-        
-        ae_score_sim = (ae_mae / umbral) * 100
-    else:
-        consumo_ae_sim = df_sim[DatasetKeys.CONSUMO_RATIO].values
-        ae_score_sim = 0.0
-
     # ─── Métricas resultado ───────────────────────────────────────────────
     st.markdown("---")
     st.markdown("#### Estimación Resultante (Último mes simulado)")
@@ -301,9 +223,9 @@ def render_whatif(df: pd.DataFrame, barrio: str | None = None):
     m2.metric("Esperado Físico (IA-RF)", f"{fisico_sim:.2f}",
               delta=f"{delta_fisico_pct:+.1f}% vs base",
               delta_color="inverse" if delta_fisico_pct > 10 else "normal")
-    m3.metric("Riesgo Anomalía (AE-IA)", f"{ae_score_sim:.0f}%",
-              delta="CRÍTICO (Anomalía)" if ae_score_sim > 100 else "NORMAL",
-              delta_color="inverse" if ae_score_sim > 100 else "off")
+    m3.metric("Riesgo Anomalía (Físico)", f"{delta_fisico_pct:.0f}%",
+              delta="SOCIAL (Alerta)" if delta_fisico_pct > 15 else "NORMAL",
+              delta_color="inverse" if delta_fisico_pct > 15 else "off")
 
     # ─── Curva de simulación ──────────────────────────────────────────────
     st.markdown("#### Evolución a 12 meses: Modelos Predictivos en Escenario")
@@ -329,13 +251,7 @@ def render_whatif(df: pd.DataFrame, barrio: str | None = None):
         line_shape='spline'
     ))
     
-    # Línea de Reconstrucción del Autoencoder (Modelo de IA)
-    fig.add_trace(go.Scatter(
-        x=fechas_str, y=consumo_ae_sim,
-        mode="lines", name="Reconstrucción (LSTM-AE)",
-        line=dict(color="#fca311", width=3, dash="dot"),
-        line_shape='spline'
-    ))
+    # (Omitimos la reconstrucción del Autoencoder)
     
     fig.update_layout(
         template="plotly_dark",

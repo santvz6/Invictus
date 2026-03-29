@@ -13,10 +13,10 @@ import logging
 from scipy.optimize import curve_fit
 from sklearn.ensemble import RandomForestRegressor
 
-from src.config import DatasetKeys, Paths
+from src.config import DatasetKeys, Paths, get_logger, AIConstants
 
 # Configuración del logger para seguimiento del modelado físico
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 class FisicosProcessor:
     """
@@ -46,7 +46,11 @@ class FisicosProcessor:
             feature_names (list[str]): Lista de columnas exógenas a considerar.
 
         Returns:
-            pd.DataFrame: Dataset con columnas de predicción física y residuos de anomalía.
+            pd.DataFrame: Dataset con columnas de predicción física y residuos de anomalía:
+                - PREDICCION_FOURIER
+                - IMPACTO_EXOGENO
+                - RESIDUO
+                - CONSUMO_FISICO_ESPERADO
         """
         logger.info("Iniciando cálculo de consumo físico esperado (Fourier + ML)...")
         
@@ -135,7 +139,8 @@ class FisicosProcessor:
             logger.warning("No hay datos de 2022-2023 para el RF Físico. Entrenando con todo.")
             X_train, y_train = X, y
             
-        ml_model = RandomForestRegressor(n_estimators=100, max_depth=8, random_state=42, n_jobs=-1).fit(X_train, y_train)
+        ml_model = RandomForestRegressor(n_estimators=100, max_depth=8, random_state=AIConstants.RANDOM_STATE, n_jobs=-1)
+        ml_model.fit(X_train, y_train)
         
         df[DatasetKeys.IMPACTO_EXOGENO] = ml_model.predict(X) # Predice todo, incluido 2024
         return df, ml_model, features_rf

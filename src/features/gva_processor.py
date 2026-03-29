@@ -9,10 +9,10 @@ evaluación de los estados de alta y baja administrativa de cada establecimiento
 import pandas as pd
 import logging
 
-from src.config import DatasetKeys, Paths
+from src.config import DatasetKeys, Paths, get_logger
 
 # Configuración del logger para el seguimiento de la carga turística
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 class GVAProcessor:
     """
@@ -35,7 +35,11 @@ class GVAProcessor:
             df_amaem (pd.DataFrame): Dataset base con registros de consumo.
 
         Returns:
-            pd.DataFrame: Dataset enriquecido con métricas de oferta turística.
+            pd.DataFrame: Dataset enriquecido con métricas de oferta turística:
+                - NUM_VT_BARRIO_GVA
+                - PLAZAS_VIVIENDAS_GVA
+                - NUM_HOTELES_BARRIO_GVA
+                - PLAZAS_HOTELES_BARRIO_GVA
         """
         logger.info("Iniciando enriquecimiento con datos turísticos de la GVA (Altas y Bajas)...")
         

@@ -8,10 +8,9 @@ para enriquecer el dataset de consumo hídrico con variables de calendario local
 import pandas as pd
 import logging
 
-from src.config import DatasetKeys, Paths
+from src.config import DatasetKeys, Paths, get_logger
 
-# Configuración del logger
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 class HolidayBarrioProcessor:
     """
@@ -27,7 +26,9 @@ class HolidayBarrioProcessor:
             df_amaem (pd.DataFrame): Dataset base de AMAEM.
 
         Returns:
-            pd.DataFrame: Dataset enriquecido con información de festivos.
+            pd.DataFrame: Dataset enriquecido con información de festivos:
+                - DIAS_FESTIVOS
+                - PCT_FESTIVOS
         """
         logger.info("Iniciando enriquecimiento con datos de festivos por barrio...")
         

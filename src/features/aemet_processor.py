@@ -8,10 +8,10 @@ de consumo hídrico con variables meteorológicas externas (temperatura y precip
 import pandas as pd
 import logging
 
-from src.config import DatasetKeys, Paths
+from src.config import DatasetKeys, Paths, get_logger
 
 # Configuración del logger para seguimiento de procesos
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 class AEMETProcessor:
     """
@@ -31,7 +31,9 @@ class AEMETProcessor:
             df_amaem (pd.DataFrame): Dataset base con registros de consumo de AMAEM.
 
         Returns:
-            pd.DataFrame: Dataset enriquecido con columnas de temperatura y precipitación.
+            pd.DataFrame: Dataset enriquecido con columnas de temperatura y precipitación:
+                - TEMP_MEDIA
+                - PRECIPITACION
         """
         logger.info("Iniciando enriquecimiento con datos climáticos de AEMET...")
         
