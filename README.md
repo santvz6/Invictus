@@ -230,14 +230,7 @@ Cada fase genera un **checkpoint CSV** intermedio en `internal/processed/` para 
 
 ## 📚 Fuentes y Referencias
 
-| Fuente | URL |
-|--------|-----|
-| AMAEM – Datos Abiertos | [datosabiertos.aguasdealicante.es](https://datosabiertos.aguasdealicante.es/) |
-| INE – Viviendas Turísticas | [ine.es/experimental](https://www.ine.es/experimental/viv_turistica/exp_viv_turistica_tablas.htm) |
-| GVA – Registro Turístico | [dadesobertes.gva.es](https://dadesobertes.gva.es/) |
-| AEMET OpenData | [opendata.aemet.es](https://opendata.aemet.es/centrodedescargas/productosAEMET) |
-| Copernicus – Sentinel-2 | [copernicus.eu](https://www.copernicus.eu/) |
-| Ayto. Alicante – Festivos | [alicante.es](https://www.alicante.es/) |
+Para una consulta técnica detallada y descarga de citaciones en formato BibTeX, consulta el archivo [references.bib](./references.bib).
 
 ---
 
