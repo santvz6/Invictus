@@ -260,17 +260,20 @@ tab_mapa, tab_whatif, tab_informe = st.tabs([
 
 # ─── TAB 1: MAPA ────────────────────────────────────────────────────────────
 with tab_mapa:
-    col_mapa, col_panel = st.columns([4, 1.4], gap="medium")
+    # UX Mejorada: Layout Horizontal "Above the Fold" para pantallas de ordenador.
+    col_mapa, col_panel = st.columns([1.1, 1], gap="large")
 
     with col_mapa:
-        st.markdown(f"#### Mapa de Calor — *{feature_label}*")
-        st.caption(
-            f"Periodo: **{fecha_inicio.strftime('%m-%Y')}** → **{fecha_fin.strftime('%m-%Y')}** · "
-            f"{'Todos los barrios' if barrio_filtro == 'Todos los barrios' else barrio_filtro}"
+        st.markdown(
+            f"""<div style="margin-bottom: 5px;">
+                  <span style="font-size:18px; font-weight:600; color:#4cc9f0;">🌍 Visión Satelital</span>
+                  <span style="color:#888; font-size:13px; margin-left:10px;">({feature_label})</span>
+                </div>""", 
+            unsafe_allow_html=True
         )
         map_output = render_map(df_barrio_agg, feature_col, gdf, alert_col_global)
 
-        # Detectar clic en el mapa (nombre del barrio desde popup)
+        # Detectar clic en el mapa
         if map_output and map_output.get("last_active_drawing"):
             props = map_output["last_active_drawing"].get("properties", {})
             nombre_click = (
@@ -286,25 +289,35 @@ with tab_mapa:
     with col_panel:
         if st.session_state.barrio_seleccionado:
             st.markdown(
-                f"<h4 style='text-align:center; color:#4cc9f0;'>{st.session_state.barrio_seleccionado}</h4>", 
+                f"""<div style="margin-bottom: 5px;">
+                      <span style="font-size:18px; font-weight:600; color:#f4a261;">🔬 Análisis Físico:</span>
+                      <span style="color:#e0e0e0; font-size:18px; font-weight:700; margin-left:5px;">{st.session_state.barrio_seleccionado}</span>
+                    </div>""", 
                 unsafe_allow_html=True
             )
             
-            # Filtramos los datos temporales reales y estimados del barrio
+            # Filtramos los datos temporales
             barrios_limpios = df_filtered[DatasetKeys.BARRIO].str.split("-", n=1).str[-1].str.strip().str.upper()
             df_panel = df_filtered[barrios_limpios == st.session_state.barrio_seleccionado].copy()
             
             if not df_panel.empty and DatasetKeys.FECHA in df_panel.columns:
-                # Marcar alertas antes de agregar
                 if DatasetKeys.ALERTA_NIVEL in df_panel.columns:
                     df_panel['es_alerta'] = (df_panel[DatasetKeys.ALERTA_NIVEL] != "Normal").astype(int)
                 
-                # Agrupar los datos temporalmente
                 agg_cols = {}
                 for c in [DatasetKeys.CONSUMO, DatasetKeys.CONSUMO_FISICO_ESPERADO]:
                     if c in df_panel.columns: agg_cols[c] = 'sum'
                 for c in [DatasetKeys.CONSUMO_RATIO, DatasetKeys.PREDICCION_FOURIER]:
                     if c in df_panel.columns: agg_cols[c] = 'mean'
+                
+                impact_cols = [
+                    DatasetKeys.PCT_CALOR_FRIO, DatasetKeys.PCT_LLUVIA_SEQUIA,
+                    DatasetKeys.PCT_VEGETACION, DatasetKeys.PCT_TURISMO,
+                    DatasetKeys.PCT_FIESTA, DatasetKeys.PCT_CAUSA_DESCONOCIDA
+                ]
+                for c in impact_cols:
+                    if c in df_panel.columns: agg_cols[c] = 'mean'
+                    
                 if 'es_alerta' in df_panel.columns:
                     agg_cols['es_alerta'] = 'max'
                 
@@ -315,7 +328,6 @@ with tab_mapa:
 
                 df_panel_temporal = df_panel_temporal.sort_values(DatasetKeys.FECHA)
                 
-                # Obtener variables de consumo
                 val_real = df_panel_temporal[DatasetKeys.CONSUMO_RATIO] if DatasetKeys.CONSUMO_RATIO in df_panel_temporal.columns else df_panel_temporal.get(DatasetKeys.CONSUMO, pd.Series([0]*len(df_panel_temporal)))
                 val_est  = df_panel_temporal[DatasetKeys.CONSUMO_FISICO_ESPERADO] if DatasetKeys.CONSUMO_FISICO_ESPERADO in df_panel_temporal.columns else df_panel_temporal.get(DatasetKeys.PREDICCION_FOURIER, pd.Series([0]*len(df_panel_temporal)))
                 
@@ -325,66 +337,91 @@ with tab_mapa:
                 fechas_str = df_panel_temporal[DatasetKeys.FECHA].dt.strftime("%Y-%m")
                 
                 fig_panel.add_trace(go.Scatter(
-                    x=fechas_str,
-                    y=val_real,
-                    mode="lines+markers",
-                    name="Real (m³/cto)",
+                    x=fechas_str, y=val_real,
+                    mode="lines+markers", name="Real (m³/cto)",
                     line=dict(color="#4cc9f0", width=2)
                 ))
                 
                 fig_panel.add_trace(go.Scatter(
-                    x=fechas_str,
-                    y=val_est,
-                    mode="lines",
-                    name="Estimado",
+                    x=fechas_str, y=val_est,
+                    mode="lines", name="Estimado",
                     line=dict(color="#f4a261", width=2, dash="dash")
                 ))
 
-                # Trazar puntos destacados si hubo alerta ese mes
                 if 'es_alerta' in df_panel_temporal.columns:
                     mask_alertas = df_panel_temporal['es_alerta'] > 0
                     if mask_alertas.any():
                         fig_panel.add_trace(go.Scatter(
-                            x=fechas_str[mask_alertas],
-                            y=val_real[mask_alertas],
-                            mode="markers",
-                            name="Anomalía",
-                            marker=dict(size=12, symbol="circle-open", line=dict(width=3, color="#e74c3c")),
+                            x=fechas_str[mask_alertas], y=val_real[mask_alertas],
+                            mode="markers", name="Anomalía Detectada",
+                            marker=dict(size=14, symbol="circle-open", line=dict(width=3, color="#e74c3c")),
                             hoverinfo="skip"
                         ))
                 
                 fig_panel.update_layout(
-                    template="plotly_dark",
-                    paper_bgcolor="rgba(0,0,0,0)",
-                    plot_bgcolor="rgba(255,255,255,0.02)",
-                    margin=dict(l=0, r=0, t=20, b=0),
+                    template="plotly_dark", paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(255,255,255,0.02)",
+                    margin=dict(l=0, r=0, t=10, b=0),
                     xaxis=dict(gridcolor="rgba(255,255,255,0.05)", showgrid=True),
                     yaxis=dict(gridcolor="rgba(255,255,255,0.05)", rangemode="tozero"),
-                    legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1, font=dict(size=10)),
-                    height=350,
-                    hovermode="x unified"
+                    legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1, font=dict(size=11)),
+                    height=300, hovermode="x unified"
                 )
                 
                 st.plotly_chart(fig_panel, width="stretch")
                 
-                if DatasetKeys.ALERTA_NIVEL in df_panel.columns:
+                # Desglose de anomalías con KPIs rápidos
+                if 'es_alerta' in df_panel_temporal.columns and df_panel_temporal['es_alerta'].any():
                     alertas_activas = int((df_panel[DatasetKeys.ALERTA_NIVEL] != "Normal").sum())
-                    st.markdown(f"<div style='text-align:center; font-size:13px;'>Alertas temporales en el periodo: <strong style='color:#e74c3c;'>{alertas_activas}</strong></div>", unsafe_allow_html=True)
+                    st.markdown(
+                        f"""<div style='background:rgba(231,76,60,0.1); border-left:3px solid #e74c3c; padding:10px 15px; border-radius:4px; margin-bottom:15px;'>
+                            <span style='color:#e74c3c; font-weight:700;'>{alertas_activas} ALERTAS ACTIVAS</span> 
+                            <span style='color:#aaa; font-size:13px;'> — Promedio de causalidad detectada:</span>
+                        </div>""", unsafe_allow_html=True
+                    )
+                    
+                    df_alertas = df_panel_temporal[df_panel_temporal['es_alerta'] > 0]
+                    impact_data = {
+                        "Clima Temp.": df_alertas.get(DatasetKeys.PCT_CALOR_FRIO, pd.Series([0])).mean(),
+                        "Clima Preci.": df_alertas.get(DatasetKeys.PCT_LLUVIA_SEQUIA, pd.Series([0])).mean(),
+                        "Vegetación":  df_alertas.get(DatasetKeys.PCT_VEGETACION, pd.Series([0])).mean(),
+                        "Turismo Clandestino": df_alertas.get(DatasetKeys.PCT_TURISMO, pd.Series([0])).mean(),
+                        "Festividades": df_alertas.get(DatasetKeys.PCT_FIESTA, pd.Series([0])).mean(),
+                        "Otros / Ruido": df_alertas.get(DatasetKeys.PCT_CAUSA_DESCONOCIDA, pd.Series([0])).mean()
+                    }
+                    
+                    total = sum(d for d in impact_data.values() if not pd.isna(d) and d > 0)
+                    if total > 0:
+                        fig_pie = go.Figure(data=[go.Pie(
+                            labels=list(impact_data.keys()), values=list(impact_data.values()),
+                            hole=.6, marker_colors=["#f39c12", "#4cc9f0", "#52b788", "#e74c3c", "#9b59b6", "#95a5a6"],
+                            textinfo="percent+label", textposition="inside"
+                        )])
+                        fig_pie.update_layout(
+                            showlegend=False, margin=dict(l=0, r=0, t=10, b=0),
+                            paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)", height=220
+                        )
+                        st.plotly_chart(fig_pie, width="stretch")
+                    else:
+                        st.info("Sin desglose causal disponible.")
+                else:
+                    st.success("No se han registrado anomalías en este barrio para el filtro seleccionado.")
             else:
-                st.info("Sin datos temporales en este rango.")
+                st.info("No hay datos temporales para visualizar.")
         else:
+            # Empty State Elegante
             st.markdown("""
             <div style="
-                height: 550px; display: flex; align-items: center;
-                justify-content: center; text-align: center;
-                background: rgba(255,255,255,0.03);
-                border: 1px dashed rgba(76,201,240,0.3);
-                border-radius: 12px; color: #668;
+                height: 600px; display: flex; flex-direction: column; align-items: center; justify-content: center; 
+                background: linear-gradient(180deg, rgba(255,255,255,0.03) 0%, rgba(255,255,255,0) 100%);
+                border: 1px dashed rgba(76,201,240,0.3); border-radius: 12px; color: #668; text-align: center;
+                padding: 40px;
             ">
-                <div>
-                    <div style="font-size: 14px; color: #aaa;">
-                        Haz clic en un polígono<br>para visualizar<br>el consumo temporal
-                    </div>
+                <div style="font-size: 50px; margin-bottom:15px; opacity:0.6;">🚰</div>
+                <div style="font-size: 18px; color: #a8dadc; font-weight:600; margin-bottom:10px;">
+                    Selecciona un Sector
+                </div>
+                <div style="font-size: 14px; color: #aaa; line-height: 1.5;">
+                    Haz clic en cualquier área del mapa interactivo situado a la izquierda para visualizar el estado de consumo físico de un barrio, la trazabilidad de sus anomalías y el diagnóstico de los motores de fraude turístico.
                 </div>
             </div>
             """, unsafe_allow_html=True)
