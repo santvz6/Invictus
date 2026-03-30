@@ -19,10 +19,9 @@ from dashboard.data_loader import (
     load_dataframe, load_geodataframe, filter_dataframe,
     aggregate_by_barrio, FEATURES_DISPONIBLES, BARRIOS_ALICANTE,
 )
-from dashboard.components.map_view       import render_map
-from dashboard.components.map_view       import render_map
+from dashboard.components.map_view         import render_map
 from dashboard.components.whatif_simulator import render_whatif
-from dashboard.components.llm_report     import render_llm_report
+from dashboard.components.llm_report       import render_llm_report
 
 
 # ════════════════════════════════════════════════════════════════════════════
