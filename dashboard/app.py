@@ -284,21 +284,89 @@ with tab_mapa:
                 st.rerun()
 
     with col_panel:
-        st.markdown("""
-        <div style="
-            height: 550px; display: flex; align-items: center;
-            justify-content: center; text-align: center;
-            background: rgba(255,255,255,0.03);
-            border: 1px dashed rgba(76,201,240,0.3);
-            border-radius: 12px; color: #668;
-        ">
-            <div>
-                <div style="font-size: 14px; color: #aaa;">
-                    Información detallada<br>del barrio<br>seleccionado
+        if st.session_state.barrio_seleccionado:
+            st.markdown(
+                f"<h4 style='text-align:center; color:#4cc9f0;'>{st.session_state.barrio_seleccionado}</h4>", 
+                unsafe_allow_html=True
+            )
+            
+            # Filtramos los datos temporales reales y estimados del barrio
+            barrios_limpios = df_filtered[DatasetKeys.BARRIO].str.split("-", n=1).str[-1].str.strip().str.upper()
+            df_panel = df_filtered[barrios_limpios == st.session_state.barrio_seleccionado].copy()
+            
+            if not df_panel.empty and DatasetKeys.FECHA in df_panel.columns:
+                # Agrupar los datos temporalmente para evitar que se solapen valores de distintos USOS para el mismo barrio/fecha
+                agg_cols = {}
+                for c in [DatasetKeys.CONSUMO, DatasetKeys.CONSUMO_FISICO_ESPERADO]:
+                    if c in df_panel.columns: agg_cols[c] = 'sum'
+                for c in [DatasetKeys.CONSUMO_RATIO, DatasetKeys.PREDICCION_FOURIER]:
+                    if c in df_panel.columns: agg_cols[c] = 'mean'
+                
+                if agg_cols:
+                    df_panel_temporal = df_panel.groupby(DatasetKeys.FECHA).agg(agg_cols).reset_index()
+                else:
+                    df_panel_temporal = df_panel.copy()
+
+                df_panel_temporal = df_panel_temporal.sort_values(DatasetKeys.FECHA)
+                
+                # Check for consumption variables
+                val_real = df_panel_temporal[DatasetKeys.CONSUMO_RATIO] if DatasetKeys.CONSUMO_RATIO in df_panel_temporal.columns else df_panel_temporal.get(DatasetKeys.CONSUMO, pd.Series([0]*len(df_panel_temporal)))
+                val_est  = df_panel_temporal[DatasetKeys.CONSUMO_FISICO_ESPERADO] if DatasetKeys.CONSUMO_FISICO_ESPERADO in df_panel_temporal.columns else df_panel_temporal.get(DatasetKeys.PREDICCION_FOURIER, pd.Series([0]*len(df_panel_temporal)))
+                
+                import plotly.graph_objects as go
+                fig_panel = go.Figure()
+                
+                fig_panel.add_trace(go.Scatter(
+                    x=df_panel_temporal[DatasetKeys.FECHA].dt.strftime("%Y-%m"),
+                    y=val_real,
+                    mode="lines+markers",
+                    name="Real (m³/cto)",
+                    line=dict(color="#4cc9f0", width=2)
+                ))
+                
+                fig_panel.add_trace(go.Scatter(
+                    x=df_panel_temporal[DatasetKeys.FECHA].dt.strftime("%Y-%m"),
+                    y=val_est,
+                    mode="lines",
+                    name="Estimado",
+                    line=dict(color="#f4a261", width=2, dash="dash")
+                ))
+                
+                fig_panel.update_layout(
+                    template="plotly_dark",
+                    paper_bgcolor="rgba(0,0,0,0)",
+                    plot_bgcolor="rgba(255,255,255,0.02)",
+                    margin=dict(l=0, r=0, t=20, b=0),
+                    xaxis=dict(gridcolor="rgba(255,255,255,0.05)", showgrid=True),
+                    yaxis=dict(gridcolor="rgba(255,255,255,0.05)", rangemode="tozero"),
+                    legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1, font=dict(size=10)),
+                    height=350,
+                    hovermode="x unified"
+                )
+                
+                st.plotly_chart(fig_panel, width="stretch")
+                
+                if DatasetKeys.ALERTA_NIVEL in df_panel.columns:
+                    alertas_activas = (df_panel[DatasetKeys.ALERTA_NIVEL] != "Normal").sum()
+                    st.markdown(f"<div style='text-align:center; font-size:13px;'>Alertas temporales en el periodo: <strong style='color:#e74c3c;'>{alertas_activas}</strong></div>", unsafe_allow_html=True)
+            else:
+                st.info("Sin datos temporales en este rango.")
+        else:
+            st.markdown("""
+            <div style="
+                height: 550px; display: flex; align-items: center;
+                justify-content: center; text-align: center;
+                background: rgba(255,255,255,0.03);
+                border: 1px dashed rgba(76,201,240,0.3);
+                border-radius: 12px; color: #668;
+            ">
+                <div>
+                    <div style="font-size: 14px; color: #aaa;">
+                        Haz clic en un polígono<br>para visualizar<br>el consumo temporal
+                    </div>
                 </div>
             </div>
-        </div>
-        """, unsafe_allow_html=True)
+            """, unsafe_allow_html=True)
 
 
 # ─── TAB 2: WHAT-IF ─────────────────────────────────────────────────────────
