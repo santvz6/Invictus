@@ -1,285 +1,534 @@
 """
-whatif_simulator.py
--------------------
-Simulador interactivo de tipo "What-if Analysis".
-El usuario mueve sliders de features y ve en tiempo real cómo varía
-el consumo estimado y el riesgo de anomalía del barrio seleccionado.
+whatif_simulator.py — Simulador What-If Interactivo
+=====================================================
+Permite al usuario ajustar manualmente el valor de los features
+(temperatura, precipitación, NDVI, % VT sin registrar, % festivos)
+para simular cómo varía el consumo mensual esperado por contrato
+respecto a la línea base histórica del barrio seleccionado.
+
+Lógica:
+    consumo_simulado = fourier_base + Δ_exogeno(features)
+    z_simulado       = (consumo_simulado - μ_barrio) / σ_barrio
+
+La función principal es render_whatif(df, barrio) y se llama
+desde dashboard/app.py en el tab "Simulador What-if".
 """
+
+import sys
+import os
 
 import numpy as np
 import pandas as pd
 import plotly.graph_objects as go
 import streamlit as st
-import torch
-import json
-import joblib
-from sklearn.ensemble import RandomForestRegressor
-from sklearn.preprocessing import MinMaxScaler, RobustScaler
 
-from src.config import DatasetKeys, Paths
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..")))
+from src.config import DatasetKeys
 
-@st.cache_resource(show_spinner="Cargando motores IA y Físico (Caché)...")
-def get_simulation_context():
+# ──────────────────────────────────────────────────────────────────────────────
+# CONSTANTES / CONFIGURACIÓN
+# ──────────────────────────────────────────────────────────────────────────────
+
+# Definición de los sliders: (etiqueta, columna DatasetKey, unidad, min, max, step, ayuda)
+FEATURES_WHATIF = [
+    {
+        "label":  "Temperatura Media (°C)",
+        "col":    DatasetKeys.TEMP_MEDIA,
+        "unit":   "°C",
+        "min":    -5.0,
+        "max":    45.0,
+        "step":   0.5,
+        "help":   "Temperatura media mensual estimada para el período simulado.",
+        "icon":   "🌡️",
+        "color":  "#f39c12",
+    },
+    {
+        "label":  "Precipitación (mm)",
+        "col":    DatasetKeys.PRECIPITACION,
+        "unit":   "mm",
+        "min":    0.0,
+        "max":    300.0,
+        "step":   1.0,
+        "help":   "Total de precipitación mensual acumulada.",
+        "icon":   "🌧️",
+        "color":  "#4cc9f0",
+    },
+    {
+        "label":  "NDVI Satélite (Vegetación)",
+        "col":    DatasetKeys.NDVI_SATELITE,
+        "unit":   "",
+        "min":    -0.2,
+        "max":    1.0,
+        "step":   0.01,
+        "help":   "Índice de vegetación normalizado (NDVI). Valores altos indican zonas verdes densas.",
+        "icon":   "🌿",
+        "color":  "#52b788",
+    },
+    {
+        "label":  "% VT sin registrar",
+        "col":    DatasetKeys.PCT_VT_SIN_REGISTRAR,
+        "unit":   "%",
+        "min":    0.0,
+        "max":    100.0,
+        "step":   0.5,
+        "help":   "Porcentaje estimado de viviendas turísticas que operan sin estar registradas en el sector.",
+        "icon":   "🏠",
+        "color":  "#e74c3c",
+    },
+    {
+        "label":  "% Días Festivos en el Mes",
+        "col":    DatasetKeys.PCT_FESTIVOS,
+        "unit":   "%",
+        "min":    0.0,
+        "max":    50.0,
+        "step":   0.5,
+        "help":   "Porcentaje de días del mes clasificados como festivos o puentes.",
+        "icon":   "🎉",
+        "color":  "#9b59b6",
+    },
+]
+
+# Umbrales del semáforo (mismos que ModeloFisico._finalize_fisicos)
+Z_LEVE  = 1.5
+Z_MOD   = 2.0
+Z_GRAVE = 2.5
+
+COLOR_NORMAL = "#52b788"
+COLOR_LEVE   = "#f39c12"
+COLOR_MOD    = "#e67e22"
+COLOR_GRAVE  = "#e74c3c"
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# HELPERS
+# ──────────────────────────────────────────────────────────────────────────────
+
+def _get_barrio_stats(df: pd.DataFrame, barrio: str | None) -> dict:
     """
-    Carga los motores físicos entrenados para la simulación interactiva.
+    Extrae la media y desviación estándar históricas del consumo_ratio
+    para el barrio seleccionado. Si no hay barrio, usa todo el DataFrame.
     """
-    if not Paths.PROC_MODEL_RF.exists() or not Paths.PROC_FEATURES_RF.exists():
-        raise FileNotFoundError("No se encontró el modelo de producción. Ejecute 'python main.py --run' primero.")
-        
-    # 1. Cargar Modelos Físicos (Producción)
-    rf_model = joblib.load(Paths.PROC_MODEL_RF)
-    
-    with open(Paths.PROC_FEATURES_RF, "r") as f:
-        features_rf = json.load(f)
-        
-    context_cols = [c for c in features_rf if c.startswith(DatasetKeys.USO + '_')]
-    
-    return rf_model, features_rf, context_cols
+    if barrio:
+        barrios_limpios = df[DatasetKeys.BARRIO].str.split("-", n=1).str[-1].str.strip().str.upper()
+        df_b = df[barrios_limpios == barrio.upper()].copy()
+    else:
+        df_b = df.copy()
 
+    if df_b.empty or DatasetKeys.CONSUMO_RATIO not in df_b.columns:
+        return {"mu": 0.0, "sigma": 1.0, "fourier_base": 0.0, "features_mean": {}}
 
-def render_whatif(df: pd.DataFrame, barrio: str | None = None):
-    """
-    Renderiza el panel simulador.
+    mu    = df_b[DatasetKeys.CONSUMO_RATIO].mean()
+    sigma = df_b[DatasetKeys.CONSUMO_RATIO].std()
+    sigma = sigma if sigma > 0 else 1.0
 
-    Parameters
-    ----------
-    df : pd.DataFrame  — DataFrame completo para calcular rangos reales
-    barrio : str | None — Si se pasa, muestra los valores reales como referencia
-    """
-    st.markdown("### Simulador What-if Avanzado (IA + Física)")
-    st.markdown(
-        "<small style='color:#888;'>Ajusta las variables para ver cómo cambia el consumo esperado "
-        "y la respuesta de los modelos predictivos.</small>",
-        unsafe_allow_html=True,
+    # Línea base Fourier: tomamos el promedio de la predicción histórica
+    fourier_base = (
+        df_b[DatasetKeys.CONSUMO_FISICO_ESPERADO].mean()
+        if DatasetKeys.CONSUMO_FISICO_ESPERADO in df_b.columns
+        else mu
     )
-    st.markdown("---")
-    
-    if not barrio:
-        barrios_disponibles = df[DatasetKeys.BARRIO].unique()
-        barrio = "PLAYA SAN JUAN" if "PLAYA SAN JUAN" in barrios_disponibles else barrios_disponibles[0]
-        st.info(f"Selecciona un barrio en el mapa. Mostrando simulación para: **{barrio}**")
 
-    # ─── Filtrar datos del barrio ───────────────────────────────────────
-    barrios_limpios = df[DatasetKeys.BARRIO].str.split("-", n=1).str[-1].str.strip().str.upper()
-    df_b = df[(barrios_limpios == barrio)].copy()
-    
-    uso_col = DatasetKeys.USO
-    if uso_col in df_b.columns and "DOMESTICO" in df_b[uso_col].values:
-        df_b = df_b[df_b[uso_col] == "DOMESTICO"].copy()
-        
-    df_b = df_b.sort_values(DatasetKeys.FECHA).tail(12)
+    # Medias históricas de cada feature del barrio (como defaults de los sliders)
+    features_mean = {}
+    for f in FEATURES_WHATIF:
+        col = f["col"]
+        if col in df_b.columns:
+            features_mean[col] = float(df_b[col].mean())
+        else:
+            features_mean[col] = 0.0
 
-    if len(df_b) < 12:
-        st.warning(f"No hay suficientes datos (12 meses) para simular el barrio {barrio}.")
-        return
-        
-    df_b[DatasetKeys.FECHA] = pd.to_datetime(df_b[DatasetKeys.FECHA])
+    return {
+        "mu":           mu,
+        "sigma":        sigma,
+        "fourier_base": fourier_base,
+        "features_mean": features_mean,
+    }
 
-    # ─── Carga de Contexto IA ───────────────────────────────────────────
-    try:
-        rf_model, features_rf, context_cols = get_simulation_context()
-    except Exception as e:
-        st.error(f"Error cargando contexto de simulación: {e}")
-        return
 
-    # ─── Rangos reales del dataset ───────────────────────────────────────
-    def _safe_range(col, default_lo, default_hi):
-        if col in df.columns:
-            lo, hi = float(df[col].min()), float(df[col].max())
-            return (lo, hi) if lo < hi else (default_lo, default_hi)
-        return (default_lo, default_hi)
+def _simulate_consumption(
+    fourier_base: float,
+    feature_values: dict,
+    df_ref: pd.DataFrame,
+    barrio: str | None,
+) -> float:
+    """
+    Estima el consumo simulado usando una regresión lineal aproximada basada en
+    las correlaciones históricas de cada feature con el residuo del barrio.
 
-    temp_range     = _safe_range(DatasetKeys.TEMP_MEDIA,           5.0, 40.0)
-    precip_range   = _safe_range(DatasetKeys.PRECIPITACION,        0.0, 150.0)
-    ndvi_range     = _safe_range(DatasetKeys.NDVI_SATELITE,        0.0, 1.0)
-    vt_sin_range   = _safe_range(DatasetKeys.PCT_VT_SIN_REGISTRAR, 0.0, 40.0)
-    festivos_range = _safe_range(DatasetKeys.PCT_FESTIVOS,         0.0, 15.0)
-    ratio_range    = _safe_range(DatasetKeys.CONSUMO_RATIO,        0.1, 10.0)
-    
-    def_temp     = df_b[DatasetKeys.TEMP_MEDIA].mean()
-    def_precip   = df_b[DatasetKeys.PRECIPITACION].mean()
-    def_ndvi     = df_b[DatasetKeys.NDVI_SATELITE].mean()
-    def_vt_sin   = df_b[DatasetKeys.PCT_VT_SIN_REGISTRAR].mean() if DatasetKeys.PCT_VT_SIN_REGISTRAR in df_b.columns else 0.0
-    def_festivos = df_b[DatasetKeys.PCT_FESTIVOS].mean() if DatasetKeys.PCT_FESTIVOS in df_b.columns else 0.0
-    def_ratio    = df_b[DatasetKeys.CONSUMO_RATIO].mean()
-    
+    consumo_sim = fourier_base + sum_i(beta_i * (x_i - mu_i))
 
-    # ─── Sliders ─────────────────────────────────────────────────────────
-    st.markdown("#### Modificación de Features")
-    st.caption("Los cambios aplicados se suman o restan uniformemente a la serie histórica de los últimos 12 meses.")
-    col1, col2, col3 = st.columns(3)
+    donde beta_i = cov(feature_i, residuo) / var(feature_i).
+    """
+    if barrio:
+        barrios_limpios = df_ref[DatasetKeys.BARRIO].str.split("-", n=1).str[-1].str.strip().str.upper()
+        df_b = df_ref[barrios_limpios == barrio.upper()].copy()
+    else:
+        df_b = df_ref.copy()
 
-    with col1:
-        temp_val = st.slider(
-            "Temperatura Media (°C)",
-            min_value=float(temp_range[0]), max_value=float(temp_range[1]),
-            value=float(def_temp), step=0.5, key="wif_temp",
-        )
-        precip_val = st.slider(
-            "Precipitación (mm)",
-            min_value=float(precip_range[0]), max_value=float(precip_range[1]),
-            value=float(def_precip), step=1.0, key="wif_precip",
-        )
-        ndvi_val = st.slider(
-            "Índice Vegetación (NDVI)",
-            min_value=float(ndvi_range[0]), max_value=float(ndvi_range[1]),
-            value=float(def_ndvi), step=0.05, key="wif_ndvi",
-        )
+    if df_b.empty:
+        return fourier_base
 
-    with col2:
-        vt_sin_val = st.slider(
-            "% VT Sin Registrar (Ilegales)",
-            min_value=float(vt_sin_range[0]), max_value=float(vt_sin_range[1]),
-            value=float(def_vt_sin), step=0.5, key="wif_vtsin",
-        )
-        festivos_val = st.slider(
-            "Festividades (% mes)",
-            min_value=float(festivos_range[0]), max_value=float(festivos_range[1]),
-            value=float(def_festivos), step=0.5, key="wif_festivos",
-        )
-        
-    with col3:
-        ratio_val = st.slider(
-            "Ratio Consumo Modificado",
-            min_value=float(ratio_range[0]), max_value=float(ratio_range[1]),
-            value=float(def_ratio), step=0.1, key="wif_ratio",
-        )
+    # Residuo = consumo_ratio − fourier (o −prediccion fourier)
+    if DatasetKeys.CONSUMO_FISICO_ESPERADO in df_b.columns:
+        df_b["_residuo"] = df_b[DatasetKeys.CONSUMO_RATIO] - df_b[DatasetKeys.CONSUMO_FISICO_ESPERADO]
+    elif DatasetKeys.PREDICCION_FOURIER in df_b.columns:
+        df_b["_residuo"] = df_b[DatasetKeys.CONSUMO_RATIO] - df_b[DatasetKeys.PREDICCION_FOURIER]
+    else:
+        df_b["_residuo"] = 0.0
 
-    # ─── Aplicar deltas a la serie temporal ──────────────────────────────
-    df_sim = df_b.copy()
-    
-    # Modificación Multiplicativa/Aditiva (Mayor rigor físico en What-If)
-    if DatasetKeys.TEMP_MEDIA in df_sim.columns: 
-        if def_temp != 0: df_sim[DatasetKeys.TEMP_MEDIA] *= (temp_val / def_temp)
-        else: df_sim[DatasetKeys.TEMP_MEDIA] += (temp_val - def_temp)
-    if DatasetKeys.PRECIPITACION in df_sim.columns: 
-        if def_precip != 0: df_sim[DatasetKeys.PRECIPITACION] *= (precip_val / def_precip)
-        else: df_sim[DatasetKeys.PRECIPITACION] = np.clip(df_sim[DatasetKeys.PRECIPITACION] + (precip_val - def_precip), 0, None)
-    if DatasetKeys.PCT_VT_SIN_REGISTRAR in df_sim.columns: 
-        df_sim[DatasetKeys.PCT_VT_SIN_REGISTRAR] = np.clip(df_sim[DatasetKeys.PCT_VT_SIN_REGISTRAR] + (vt_sin_val - def_vt_sin), 0, 100)
-    if DatasetKeys.NDVI_SATELITE in df_sim.columns: 
-        if def_ndvi != 0: df_sim[DatasetKeys.NDVI_SATELITE] = np.clip(df_sim[DatasetKeys.NDVI_SATELITE] * (ndvi_val / def_ndvi), 0, 1)
-        else: df_sim[DatasetKeys.NDVI_SATELITE] = np.clip(df_sim[DatasetKeys.NDVI_SATELITE] + (ndvi_val - def_ndvi), 0, 1)
-    if DatasetKeys.PCT_FESTIVOS in df_sim.columns: 
-        if def_festivos != 0: df_sim[DatasetKeys.PCT_FESTIVOS] *= (festivos_val / def_festivos)
-        else: df_sim[DatasetKeys.PCT_FESTIVOS] = np.clip(df_sim[DatasetKeys.PCT_FESTIVOS] + (festivos_val - def_festivos), 0, 100)
-    if DatasetKeys.CONSUMO_RATIO in df_sim.columns: 
-        if def_ratio != 0: df_sim[DatasetKeys.CONSUMO_RATIO] = np.clip(df_sim[DatasetKeys.CONSUMO_RATIO] * (ratio_val / def_ratio), 0.1, None)
-        else: df_sim[DatasetKeys.CONSUMO_RATIO] = np.clip(df_sim[DatasetKeys.CONSUMO_RATIO] + (ratio_val - def_ratio), 0.1, None)
+    delta_total = 0.0
+    for f in FEATURES_WHATIF:
+        col = f["col"]
+        if col not in df_b.columns:
+            continue
 
-    # ─── 1. Inferencia del Modelo Físico (RF) ────────────────────────────
-    # Aplicamos el mismo preprocesamiento que en ModeloFisico._calculate_ml_impact
-    df_sim_ml = pd.get_dummies(df_sim, columns=[DatasetKeys.USO])
-    
-    # Asegurar que todas las columnas de contexto de USO existen
-    for c in context_cols:
-        if c not in df_sim_ml.columns:
-            df_sim_ml[c] = 0
-            
-    # La Predicción Fourier ya viene en el DF base que recibe render_whatif
-    # Si no existiera (fallback), usamos el consumo como base
-    if DatasetKeys.PREDICCION_FOURIER not in df_sim_ml.columns:
-        df_sim_ml[DatasetKeys.PREDICCION_FOURIER] = df_sim_ml[DatasetKeys.CONSUMO_RATIO]
-        
-    X_sim = df_sim_ml[features_rf].fillna(0)
-    impacto_sim = rf_model.predict(X_sim)
-    consumo_fisico_sim = df_sim_ml[DatasetKeys.PREDICCION_FOURIER] + impacto_sim
+        x = df_b[col].fillna(df_b[col].mean())
+        y = df_b["_residuo"].fillna(0)
+        var_x = x.var()
+        if var_x < 1e-9:
+            continue
+        beta = x.cov(y) / var_x  # OLS simple
+        mu_x = x.mean()
+        delta_total += beta * (feature_values.get(col, mu_x) - mu_x)
 
-    # ─── Métricas resultado ───────────────────────────────────────────────
-    st.markdown("---")
-    st.markdown("#### Estimación Resultante (Último mes simulado)")
+    return fourier_base + delta_total
 
-    ratio_sim = df_sim[DatasetKeys.CONSUMO_RATIO].iloc[-1]
-    ratio_orig = df_b[DatasetKeys.CONSUMO_RATIO].iloc[-1]
-    delta_ratio_pct = ((ratio_sim / ratio_orig) - 1) * 100 if ratio_orig > 0 else 0
-    
-    fisico_sim = consumo_fisico_sim.iloc[-1]
-    fisico_orig = df_b[DatasetKeys.CONSUMO_FISICO_ESPERADO].iloc[-1] if DatasetKeys.CONSUMO_FISICO_ESPERADO in df_b.columns else fisico_sim
-    delta_fisico_pct = ((fisico_sim / fisico_orig) - 1) * 100 if fisico_orig > 0 else 0
 
-    m1, m2, m3 = st.columns(3)
-    m1.metric("Ratio Consumo Simulado", f"{ratio_sim:.2f}",
-              delta=f"{delta_ratio_pct:+.1f}% vs real")
-    m2.metric("Esperado Físico (IA-RF)", f"{fisico_sim:.2f}",
-              delta=f"{delta_fisico_pct:+.1f}% vs base",
-              delta_color="inverse" if delta_fisico_pct > 10 else "normal")
-    m3.metric("Riesgo Anomalía (Físico)", f"{delta_fisico_pct:.0f}%",
-              delta="SOCIAL (Alerta)" if delta_fisico_pct > 15 else "NORMAL",
-              delta_color="inverse" if delta_fisico_pct > 15 else "off")
+def _get_alert_info(z: float) -> tuple[str, str, str]:
+    """Devuelve (nivel_texto, color, emoji) según el z-score."""
+    az = abs(z)
+    sign = "EXCESO" if z > 0 else "DEFECTO"
+    if az > Z_GRAVE:
+        return f"{sign} GRAVE",  COLOR_GRAVE, "🔴"
+    elif az > Z_MOD:
+        return f"{sign} MODERADO", COLOR_MOD, "🟠"
+    elif az > Z_LEVE:
+        return f"{sign} LEVE", COLOR_LEVE, "🟡"
+    else:
+        return "NORMAL", COLOR_NORMAL, "🟢"
 
-    # ─── Curva de simulación ──────────────────────────────────────────────
-    st.markdown("#### Evolución a 12 meses: Modelos Predictivos en Escenario")
-    
-    # Abstracción a un escenario simulado base (Año 2024)
-    fechas_str = []
-    año_base = 2024
-    mes_anterior = -1
-    for dt in df_sim[DatasetKeys.FECHA]:
-        if mes_anterior != -1 and dt.month < mes_anterior:
-            año_base += 1 # Cambio de año (ej. Diciembre -> Enero)
-        fechas_str.append(f"{año_base}-{dt.month:02d}")
-        mes_anterior = dt.month
-    
-    fig = go.Figure()
-    
-    # Área base de Ratio Esperado Físico
-    fig.add_trace(go.Scatter(
-        x=fechas_str, y=consumo_fisico_sim,
-        mode="lines", name="Esperado Físico (IA-RF)",
-        line=dict(color="#52b788", width=2, dash="dash"),
-        fill='tozeroy', fillcolor='rgba(82, 183, 136, 0.05)',
-        line_shape='spline'
+
+def _build_gauge(z_value: float, nivel: str, color: str) -> go.Figure:
+    """Construye el gauge chart del Z-Score simulado."""
+    fig = go.Figure(go.Indicator(
+        mode="gauge+number+delta",
+        value=round(z_value, 3),
+        number={"font": {"size": 36, "color": color}, "suffix": " σ"},
+        delta={"reference": 0, "increasing": {"color": COLOR_GRAVE}, "decreasing": {"color": COLOR_NORMAL}},
+        gauge={
+            "axis": {"range": [-4, 4], "tickwidth": 1, "tickcolor": "#aaa", "tickfont": {"color": "#aaa"}},
+            "bar":  {"color": color, "thickness": 0.25},
+            "bgcolor": "rgba(0,0,0,0)",
+            "borderwidth": 0,
+            "steps": [
+                {"range": [-4,    -Z_GRAVE], "color": "rgba(231,76,60,0.25)"},
+                {"range": [-Z_GRAVE, -Z_MOD], "color": "rgba(230,126,34,0.18)"},
+                {"range": [-Z_MOD,  -Z_LEVE], "color": "rgba(243,156,18,0.15)"},
+                {"range": [-Z_LEVE,   Z_LEVE], "color": "rgba(82,183,136,0.15)"},
+                {"range": [Z_LEVE,    Z_MOD],  "color": "rgba(243,156,18,0.15)"},
+                {"range": [Z_MOD,     Z_GRAVE], "color": "rgba(230,126,34,0.18)"},
+                {"range": [Z_GRAVE,    4],       "color": "rgba(231,76,60,0.25)"},
+            ],
+            "threshold": {
+                "line": {"color": color, "width": 4},
+                "thickness": 0.75,
+                "value": z_value,
+            },
+        },
+        title={"text": f"<b>Z-Score Simulado</b><br><span style='font-size:14px;color:{color}'>{nivel}</span>",
+               "font": {"size": 14, "color": "#e0e0e0"}},
     ))
-    
-    # (Omitimos la reconstrucción del Autoencoder)
-    
+    fig.update_layout(
+        paper_bgcolor="rgba(0,0,0,0)",
+        margin=dict(l=20, r=20, t=60, b=10),
+        height=270,
+    )
+    return fig
+
+
+def _build_comparison_bar(consumo_base: float, consumo_sim: float, consumo_real: float) -> go.Figure:
+    """Gráfico de barras comparativo: base histórica, simulación, real histórico."""
+    labels = ["Base Histórica<br>(Fourier)", "Simulado<br>(What-If)", "Real Histórico<br>(Media)"]
+    values = [consumo_base, consumo_sim, consumo_real]
+    colors = ["#4cc9f0", "#f39c12", "#52b788"]
+
+    fig = go.Figure(go.Bar(
+        x=labels,
+        y=values,
+        marker_color=colors,
+        text=[f"{v:.2f} m³/cto" for v in values],
+        textposition="outside",
+        textfont=dict(color="#e0e0e0", size=13),
+    ))
     fig.update_layout(
         template="plotly_dark",
         paper_bgcolor="rgba(0,0,0,0)",
         plot_bgcolor="rgba(255,255,255,0.02)",
         margin=dict(l=0, r=0, t=10, b=0),
-        xaxis=dict(gridcolor="rgba(255,255,255,0.05)", showgrid=True, type='category'),
-        yaxis=dict(gridcolor="rgba(255,255,255,0.05)", title="Ratio m³ / contrato"),
-        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
-        height=320,
-        hovermode="x unified"
+        yaxis=dict(title="m³ / contrato", gridcolor="rgba(255,255,255,0.07)", rangemode="tozero"),
+        xaxis=dict(gridcolor="rgba(255,255,255,0.03)"),
+        height=260,
+        showlegend=False,
     )
-    st.plotly_chart(fig, width='stretch')
+    return fig
 
-    # ─── Gráfico de Importancia (RF) ───────────────────────────────
-    with st.expander("Ver Importancia de Factores Físicos", expanded=False):
-        importances = rf_model.feature_importances_
-        feat_names_friendly = {
-            DatasetKeys.TEMP_MEDIA: "Temperatura Media",
-            DatasetKeys.PRECIPITACION: "Precipitación",
-            DatasetKeys.PCT_VT_SIN_REGISTRAR: "Pisos Ilegales (% VT)",
-            DatasetKeys.NDVI_SATELITE: "Índice Vegetación (NDVI)",
-            DatasetKeys.PCT_FESTIVOS: "Festividades (% mes)"
-        }
-        
-        imp_dict = {}
-        for i, feat in enumerate(features_rf):
-            if feat in feat_names_friendly:
-                imp_dict[feat_names_friendly[feat]] = importances[i] * 100
-                
-        sorted_imp = sorted(imp_dict.items(), key=lambda x: x[1], reverse=True)[:5]
-        if sorted_imp:
-            fig2 = go.Figure(go.Bar(
-                x=[v for k, v in sorted_imp],
-                y=[k for k, v in sorted_imp],
-                orientation="h",
-                marker_color="#4cc9f0",
-                text=[f"{v:.1f}%" for k, v in sorted_imp],
-                textposition="outside",
-            ))
-            fig2.update_layout(
-                title="Peso relativo en la predicción física",
-                template="plotly_dark",
-                paper_bgcolor="rgba(0,0,0,0)",
-                plot_bgcolor="rgba(255,255,255,0.02)",
-                margin=dict(l=0, r=10, t=30, b=0),
-                xaxis=dict(title="%", gridcolor="rgba(255,255,255,0.05)", range=[0, max([v for k,v in sorted_imp])*1.2]),
-                yaxis=dict(autorange="reversed"),
-                height=220,
+
+def _build_sensitivity_chart(
+    df_ref: pd.DataFrame,
+    barrio: str | None,
+    fourier_base: float,
+    sigma: float,
+    feature_values: dict,
+) -> go.Figure:
+    """
+    Spider/radar de sensibilidad: muestra la contribución de cada feature al
+    cambio de consumo simulado respecto a la base Fourier, expresado en sigmas.
+    """
+    if barrio:
+        barrios_limpios = df_ref[DatasetKeys.BARRIO].str.split("-", n=1).str[-1].str.strip().str.upper()
+        df_b = df_ref[barrios_limpios == barrio.upper()].copy()
+    else:
+        df_b = df_ref.copy()
+
+    if df_b.empty:
+        return go.Figure()
+
+    if DatasetKeys.CONSUMO_FISICO_ESPERADO in df_b.columns:
+        df_b["_residuo"] = df_b[DatasetKeys.CONSUMO_RATIO] - df_b[DatasetKeys.CONSUMO_FISICO_ESPERADO]
+    elif DatasetKeys.PREDICCION_FOURIER in df_b.columns:
+        df_b["_residuo"] = df_b[DatasetKeys.CONSUMO_RATIO] - df_b[DatasetKeys.PREDICCION_FOURIER]
+    else:
+        df_b["_residuo"] = 0.0
+
+    labels = []
+    contributions_z = []
+    bar_colors = []
+
+    for f in FEATURES_WHATIF:
+        col = f["col"]
+        if col not in df_b.columns:
+            continue
+        x = df_b[col].fillna(df_b[col].mean())
+        y = df_b["_residuo"].fillna(0)
+        var_x = x.var()
+        if var_x < 1e-9:
+            continue
+        beta     = x.cov(y) / var_x
+        mu_x     = x.mean()
+        delta    = beta * (feature_values.get(col, mu_x) - mu_x)
+        delta_z  = delta / sigma if sigma > 0 else 0.0
+        labels.append(f["icon"] + " " + f["label"].split("(")[0].strip())
+        contributions_z.append(round(delta_z, 4))
+        bar_colors.append(f["color"])
+
+    fig = go.Figure(go.Bar(
+        x=labels,
+        y=contributions_z,
+        marker_color=bar_colors,
+        text=[f"{v:+.3f}σ" for v in contributions_z],
+        textposition="outside",
+        textfont=dict(color="#e0e0e0", size=11),
+    ))
+    fig.add_hline(y=0, line_width=1, line_dash="dot", line_color="rgba(255,255,255,0.3)")
+    fig.update_layout(
+        template="plotly_dark",
+        paper_bgcolor="rgba(0,0,0,0)",
+        plot_bgcolor="rgba(255,255,255,0.02)",
+        margin=dict(l=0, r=0, t=10, b=0),
+        yaxis=dict(title="Δ Z-Score por feature", gridcolor="rgba(255,255,255,0.07)"),
+        xaxis=dict(tickangle=-20, gridcolor="rgba(255,255,255,0.03)"),
+        height=270,
+        showlegend=False,
+    )
+    return fig
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# RENDER PRINCIPAL
+# ──────────────────────────────────────────────────────────────────────────────
+
+def render_whatif(df: pd.DataFrame, barrio: str | None = None) -> None:
+    """
+    Renderiza el simulador What-If completo en el tab de Streamlit.
+
+    Args:
+        df      : DataFrame filtrado (df_filtered de app.py).
+        barrio  : Barrio activo seleccionado en el mapa (puede ser None).
+    """
+
+    # ── Encabezado ────────────────────────────────────────────────────────────
+    titulo_barrio = barrio if barrio else "Todos los Barrios"
+    st.markdown(
+        f"""
+        <div style="padding: 8px 0 18px;">
+            <span style="font-size:22px; font-weight:700; color:#4cc9f0;">🧮 Simulador What-If</span>
+            <span style="color:#888; font-size:14px; margin-left:12px;">
+                Barrio activo: <b style="color:#f4a261;">{titulo_barrio}</b>
+            </span>
+        </div>
+        <p style="color:#aaa; font-size:13px; margin-top:-12px; margin-bottom:18px;">
+            Ajusta los sliders para simular un consumo hipotético en base al valor de los features.
+            El sistema calcula el cambio esperado sobre la línea base estacional (Fourier) y lo
+            expresa como Z-Score para detectar situaciones de anomalía potencial.
+        </p>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    if df.empty:
+        st.warning("No hay datos disponibles para el filtro temporal y de barrio seleccionado.")
+        return
+
+    # ── Estadísticas históricas del barrio ───────────────────────────────────
+    stats = _get_barrio_stats(df, barrio)
+    mu           = stats["mu"]
+    sigma        = stats["sigma"]
+    fourier_base = stats["fourier_base"]
+    feat_means   = stats["features_mean"]
+
+    # ── Layout: sliders izquierda | resultados derecha ────────────────────────
+    col_sliders, col_results = st.columns([1, 1.3], gap="large")
+
+    with col_sliders:
+        st.markdown("#### ⚙️ Parámetros del Escenario")
+
+        feature_values: dict[str, float] = {}
+        for f in FEATURES_WHATIF:
+            col     = f["col"]
+            default = feat_means.get(col, (f["min"] + f["max"]) / 2)
+            default = float(np.clip(default, f["min"], f["max"]))
+
+            st.markdown(
+                f"""<div style="font-size:13px; color:#ccc; margin-bottom:2px;">
+                    {f["icon"]} <b>{f["label"]}</b>
+                </div>""",
+                unsafe_allow_html=True,
             )
-            st.plotly_chart(fig2, width='stretch')
+            val = st.slider(
+                label=f["label"],
+                min_value=f["min"],
+                max_value=f["max"],
+                value=default,
+                step=f["step"],
+                help=f["help"],
+                key=f"whatif_{col}",
+                label_visibility="collapsed",
+            )
+            feature_values[col] = val
+
+        st.markdown("---")
+        # Botón reset
+        if st.button("↩ Restaurar valores históricos", key="whatif_reset", type="secondary"):
+            for f in FEATURES_WHATIF:
+                col = f["col"]
+                st.session_state[f"whatif_{col}"] = float(
+                    np.clip(feat_means.get(col, (f["min"] + f["max"]) / 2), f["min"], f["max"])
+                )
+            st.rerun()
+
+    # ── Simulación ────────────────────────────────────────────────────────────
+    consumo_sim = _simulate_consumption(fourier_base, feature_values, df, barrio)
+    z_sim = (consumo_sim - mu) / sigma
+    nivel, color_nivel, emoji_nivel = _get_alert_info(z_sim)
+
+    # ── Panel de Resultados ───────────────────────────────────────────────────
+    with col_results:
+        st.markdown("#### 📊 Resultado de la Simulación")
+
+        # KPIs rápidos
+        k1, k2, k3 = st.columns(3)
+        k1.metric(
+            "Consumo Simulado",
+            f"{consumo_sim:.2f} m³/cto",
+            delta=f"{consumo_sim - fourier_base:+.2f} vs base",
+            delta_color="inverse",
+        )
+        k2.metric("Z-Score",    f"{z_sim:.3f} σ",  delta=f"{nivel}", delta_color="off")
+        k3.metric("Nivel Alerta", emoji_nivel,       delta=nivel,       delta_color="off")
+
+        # Gauge
+        fig_gauge = _build_gauge(z_sim, nivel, color_nivel)
+        st.plotly_chart(fig_gauge, use_container_width=True, key="gauge_whatif")
+
+        # Banner de alerta si anomalía
+        if abs(z_sim) > Z_LEVE:
+            st.markdown(
+                f"""
+                <div style="background: rgba({
+                    '231,76,60' if abs(z_sim) > Z_GRAVE else
+                    '230,126,34' if abs(z_sim) > Z_MOD else
+                    '243,156,18'
+                }, 0.12); border-left: 4px solid {color_nivel};
+                padding: 12px 18px; border-radius: 6px; margin-top: 8px;">
+                    <span style="color:{color_nivel}; font-weight:700; font-size:15px;">
+                        {emoji_nivel} {nivel}
+                    </span>
+                    <span style="color:#ccc; font-size:13px; margin-left:8px;">
+                        — El escenario simulado supera el umbral estadístico de anomalía (|z| &gt; {
+                            Z_LEVE if abs(z_sim) <= Z_MOD else Z_MOD if abs(z_sim) <= Z_GRAVE else Z_GRAVE
+                        }σ).
+                    </span>
+                </div>
+                """,
+                unsafe_allow_html=True,
+            )
+        else:
+            st.markdown(
+                f"""
+                <div style="background: rgba(82,183,136,0.10); border-left: 4px solid {COLOR_NORMAL};
+                padding: 12px 18px; border-radius: 6px; margin-top: 8px;">
+                    <span style="color:{COLOR_NORMAL}; font-weight:700;">🟢 NORMAL</span>
+                    <span style="color:#ccc; font-size:13px; margin-left:8px;">
+                        — El escenario simulado no supera ningún umbral de anomalía.
+                    </span>
+                </div>
+                """,
+                unsafe_allow_html=True,
+            )
+
+    # ── Fila inferior: comparativa + sensibilidad ─────────────────────────────
+    st.markdown("---")
+    col_bar, col_sens = st.columns(2, gap="large")
+
+    with col_bar:
+        st.markdown("##### Comparativa de Consumo (m³ / contrato)")
+        fig_bar = _build_comparison_bar(fourier_base, consumo_sim, mu)
+        st.plotly_chart(fig_bar, use_container_width=True, key="bar_whatif")
+
+    with col_sens:
+        st.markdown("##### Sensibilidad por Feature (Δ Z-Score)")
+        fig_sens = _build_sensitivity_chart(df, barrio, fourier_base, sigma, feature_values)
+        st.plotly_chart(fig_sens, use_container_width=True, key="sens_whatif")
+
+    # ── Tabla de features ─────────────────────────────────────────────────────
+    with st.expander("📋 Ver valores del escenario simulado vs. histórico"):
+        rows = []
+        for f in FEATURES_WHATIF:
+            col   = f["col"]
+            val_s = feature_values.get(col, 0.0)
+            val_h = feat_means.get(col, 0.0)
+            delta_pct = ((val_s - val_h) / val_h * 100) if val_h != 0 else 0.0
+            rows.append({
+                "Feature":           f["icon"] + " " + f["label"],
+                "Histórico (media)": f"{val_h:.3f} {f['unit']}",
+                "Simulado":          f"{val_s:.3f} {f['unit']}",
+                "Δ vs. histórico":   f"{delta_pct:+.1f}%",
+            })
+        st.dataframe(
+            pd.DataFrame(rows),
+            hide_index=True,
+            use_container_width=True,
+        )
+
+    # ── Nota metodológica ─────────────────────────────────────────────────────
+    st.markdown(
+        """
+        <div style="color:#555; font-size:11px; margin-top:18px; line-height:1.6;">
+            <b>Nota metodológica:</b> El consumo simulado se calcula sumando a la línea base estacional (Fourier)
+            el impacto marginal de cada feature estimado mediante una regresión OLS sobre el residuo histórico.
+            El Z-Score se normaliza con la distribución del barrio seleccionado. Los umbrales de alerta empleados
+            son: |z| &gt; 1.5 → Leve, |z| &gt; 2.0 → Moderado, |z| &gt; 2.5 → Grave.
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )

@@ -196,14 +196,43 @@ def _add_choropleth(m, gdf, df_barrio, feature_col, alert_col) -> bool:
                     val = row.get(feature_col, 0)
                     alertas = int(row.get(alert_col, 0))
                     
-                    folium.Polygon(
-                        locations=POLIGONOS_FALTANTES[barrio],
-                        color="rgba(255, 255, 255, 0.4)", 
-                        weight=1, # Grosor fino para que no destaque agresivamente
-                        fill=True,
-                        fill_color=colormap(val),
-                        fill_opacity=0.75,
-                        tooltip=f"<b>{barrio} (Polígono)</b><br>{feature_col}: {val:.1f}<br>Z-Score Residual: {row.get(DatasetKeys.Z_ERROR_FINAL, 0):.1f}<br>Alertas Activas: {int(row.get(alert_col, 0))}",
+                    # Convertimos lat, lon a lon, lat para GeoJSON
+                    coords_lon_lat = [[lon, lat] for lat, lon in POLIGONOS_FALTANTES[barrio]]
+                    # GeoJSON exige que el polígono esté cerrado (primer y último punto coincidan)
+                    if coords_lon_lat[0] != coords_lon_lat[-1]:
+                        coords_lon_lat.append(coords_lon_lat[0])
+                        
+                    geojson_feature = {
+                        "type": "Feature",
+                        "geometry": {
+                            "type": "Polygon",
+                            "coordinates": [coords_lon_lat]
+                        },
+                        "properties": {
+                            "barrio_limpio": barrio,
+                            feature_col: val,
+                            DatasetKeys.Z_ERROR_FINAL: row.get(DatasetKeys.Z_ERROR_FINAL, 0),
+                            alert_col: alertas
+                        }
+                    }
+                    
+                    folium.GeoJson(
+                        geojson_feature,
+                        style_function=lambda feature, c=colormap(val): {
+                            "fillColor": c,
+                            "color": "rgba(255, 255, 255, 0.4)", 
+                            "weight": 1,
+                            "fillOpacity": 0.75,
+                        },
+                        highlight_function=highlight_fn,
+                        tooltip=folium.GeoJsonTooltip(
+                            fields=["barrio_limpio", feature_col, DatasetKeys.Z_ERROR_FINAL, alert_col],
+                            aliases=["Barrio (Polígono):", f"{feature_col}:", "Z-Score Residual:", "Alertas Activas:"],
+                            localize=True,
+                            style=("background-color: #0d1b2a; color: #e0e0e0; font-family: 'Inter', sans-serif; "
+                                   "font-size: 13px; padding: 10px; border: 1px solid #4cc9f0; border-radius: 6px;")
+                        ),
+                        popup=folium.GeoJsonPopup(fields=["barrio_limpio"], aliases=["Barrio:"]),
                     ).add_to(m)
 
     return True
