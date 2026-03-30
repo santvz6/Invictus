@@ -295,12 +295,18 @@ with tab_mapa:
             df_panel = df_filtered[barrios_limpios == st.session_state.barrio_seleccionado].copy()
             
             if not df_panel.empty and DatasetKeys.FECHA in df_panel.columns:
-                # Agrupar los datos temporalmente para evitar que se solapen valores de distintos USOS para el mismo barrio/fecha
+                # Marcar alertas antes de agregar
+                if DatasetKeys.ALERTA_NIVEL in df_panel.columns:
+                    df_panel['es_alerta'] = (df_panel[DatasetKeys.ALERTA_NIVEL] != "Normal").astype(int)
+                
+                # Agrupar los datos temporalmente
                 agg_cols = {}
                 for c in [DatasetKeys.CONSUMO, DatasetKeys.CONSUMO_FISICO_ESPERADO]:
                     if c in df_panel.columns: agg_cols[c] = 'sum'
                 for c in [DatasetKeys.CONSUMO_RATIO, DatasetKeys.PREDICCION_FOURIER]:
                     if c in df_panel.columns: agg_cols[c] = 'mean'
+                if 'es_alerta' in df_panel.columns:
+                    agg_cols['es_alerta'] = 'max'
                 
                 if agg_cols:
                     df_panel_temporal = df_panel.groupby(DatasetKeys.FECHA).agg(agg_cols).reset_index()
@@ -309,15 +315,17 @@ with tab_mapa:
 
                 df_panel_temporal = df_panel_temporal.sort_values(DatasetKeys.FECHA)
                 
-                # Check for consumption variables
+                # Obtener variables de consumo
                 val_real = df_panel_temporal[DatasetKeys.CONSUMO_RATIO] if DatasetKeys.CONSUMO_RATIO in df_panel_temporal.columns else df_panel_temporal.get(DatasetKeys.CONSUMO, pd.Series([0]*len(df_panel_temporal)))
                 val_est  = df_panel_temporal[DatasetKeys.CONSUMO_FISICO_ESPERADO] if DatasetKeys.CONSUMO_FISICO_ESPERADO in df_panel_temporal.columns else df_panel_temporal.get(DatasetKeys.PREDICCION_FOURIER, pd.Series([0]*len(df_panel_temporal)))
                 
                 import plotly.graph_objects as go
                 fig_panel = go.Figure()
                 
+                fechas_str = df_panel_temporal[DatasetKeys.FECHA].dt.strftime("%Y-%m")
+                
                 fig_panel.add_trace(go.Scatter(
-                    x=df_panel_temporal[DatasetKeys.FECHA].dt.strftime("%Y-%m"),
+                    x=fechas_str,
                     y=val_real,
                     mode="lines+markers",
                     name="Real (m³/cto)",
@@ -325,12 +333,25 @@ with tab_mapa:
                 ))
                 
                 fig_panel.add_trace(go.Scatter(
-                    x=df_panel_temporal[DatasetKeys.FECHA].dt.strftime("%Y-%m"),
+                    x=fechas_str,
                     y=val_est,
                     mode="lines",
                     name="Estimado",
                     line=dict(color="#f4a261", width=2, dash="dash")
                 ))
+
+                # Trazar puntos destacados si hubo alerta ese mes
+                if 'es_alerta' in df_panel_temporal.columns:
+                    mask_alertas = df_panel_temporal['es_alerta'] > 0
+                    if mask_alertas.any():
+                        fig_panel.add_trace(go.Scatter(
+                            x=fechas_str[mask_alertas],
+                            y=val_real[mask_alertas],
+                            mode="markers",
+                            name="Anomalía",
+                            marker=dict(size=12, symbol="circle-open", line=dict(width=3, color="#e74c3c")),
+                            hoverinfo="skip"
+                        ))
                 
                 fig_panel.update_layout(
                     template="plotly_dark",
@@ -347,7 +368,7 @@ with tab_mapa:
                 st.plotly_chart(fig_panel, width="stretch")
                 
                 if DatasetKeys.ALERTA_NIVEL in df_panel.columns:
-                    alertas_activas = (df_panel[DatasetKeys.ALERTA_NIVEL] != "Normal").sum()
+                    alertas_activas = int((df_panel[DatasetKeys.ALERTA_NIVEL] != "Normal").sum())
                     st.markdown(f"<div style='text-align:center; font-size:13px;'>Alertas temporales en el periodo: <strong style='color:#e74c3c;'>{alertas_activas}</strong></div>", unsafe_allow_html=True)
             else:
                 st.info("Sin datos temporales en este rango.")
