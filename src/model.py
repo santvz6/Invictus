@@ -67,10 +67,10 @@ class ModeloFisico:
         df = ModeloFisico._calculate_fourier_baseline(df)
 
         # 3. Fase de ML: Modelado del impacto de variables exógenas
-        df, rf_model, features_rf = ModeloFisico._calculate_ml_impact(df, feature_names)
+        df, rf_model, features_rf, X_full = ModeloFisico._calculate_ml_impact(df, feature_names)
 
         # 4. Consolidación y persistencia
-        df = ModeloFisico._finalize_fisicos(df)
+        df = ModeloFisico._finalize_fisicos(df, rf_model, X_full)
 
         return df, rf_model, features_rf
 
@@ -116,7 +116,7 @@ class ModeloFisico:
         return df
 
     @staticmethod
-    def _calculate_ml_impact(df: pd.DataFrame, feature_names: list[str]) -> tuple[pd.DataFrame, RandomForestRegressor, list[str]]:
+    def _calculate_ml_impact(df: pd.DataFrame, feature_names: list[str]) -> tuple[pd.DataFrame, RandomForestRegressor, list[str], pd.DataFrame]:
         """Entrena un modelo para predecir cuánto del consumo depende de factores externos."""
         # Cálculo del residuo estacional (lo que Fourier no explica)
         df[DatasetKeys.RESIDUO] = df[DatasetKeys.CONSUMO_RATIO] - df[DatasetKeys.PREDICCION_FOURIER]
@@ -146,22 +146,19 @@ class ModeloFisico:
         ml_model.fit(X_train, y_train)
         
         df[DatasetKeys.IMPACTO_EXOGENO] = ml_model.predict(X) # Predice todo, incluido 2024
-        return df, ml_model, features_rf
+        return df, ml_model, features_rf, X
 
     @staticmethod
-    def _finalize_fisicos(df: pd.DataFrame) -> pd.DataFrame:
-        """Combina componentes y genera los residuos finales para la detección de fraude y porcentajes de causa."""
+    def _finalize_fisicos(df: pd.DataFrame, rf_model: RandomForestRegressor, X_full: pd.DataFrame) -> pd.DataFrame:
+        """Combina componentes y genera los residuos finales para la detección de fraude y porcentajes de causa vía SHAP."""
+        import shap
+        
         # Híbrido: Base Física + Impacto de Contexto
         df[DatasetKeys.CONSUMO_FISICO_ESPERADO] = df[DatasetKeys.PREDICCION_FOURIER] + df[DatasetKeys.IMPACTO_EXOGENO]
         
         # Residuo Final: Diferencia entre consumo real y lo que la 'física' y el 'contexto' dictan
         # Un residuo positivo elevado es un fuerte indicador de posible fraude/fuga
         df[DatasetKeys.RESIDUO] = df[DatasetKeys.CONSUMO_RATIO] - df[DatasetKeys.CONSUMO_FISICO_ESPERADO]
-        
-        # --- 4. Cálculo de Causas (Porcentajes) y Triaje de Anomalías ---
-        sospechosos_posibles = FeatureConfig.CAUSAS_EXOGENAS
-        
-        sospechosos = {k: v for k, v in sospechosos_posibles.items() if k in df.columns}
         
         # Función auxiliar para cálculo robusto de Z-Score evitando avisos de división por cero
         def robust_zscore(x):
@@ -170,22 +167,46 @@ class ModeloFisico:
                 return 0.0
             return (x - x.mean()) / std
 
-        for var in sospechosos.keys():
-            df[f'z_{var}'] = df.groupby([DatasetKeys.BARRIO, DatasetKeys.USO])[var].transform(robust_zscore)
-            df[f'peso_{var}'] = df[f'z_{var}'].abs()
-            
         df[DatasetKeys.Z_ERROR_FINAL] = df.groupby([DatasetKeys.BARRIO, DatasetKeys.USO])[DatasetKeys.RESIDUO].transform(robust_zscore)
-        df['peso_Desconocido'] = df[DatasetKeys.Z_ERROR_FINAL].abs()
         
-        columnas_pesos = [f'peso_{var}' for var in sospechosos.keys()] + ['peso_Desconocido']
-        df['suma_pesos'] = df[columnas_pesos].sum(axis=1).replace(0, 1) # Evitar división por cero
+        # --- 4. Cálculo de Causas e Imputación AI (SHAP) ---
+        # Estrategia: los valores SHAP del RF están en unidades de consumo_ratio (m³/cto).
+        # Para que la "causa desconocida" sea comparable, usamos abs(z_error_final) normalizado
+        # por la desviación estándar local, mapeándolo de vuelta a la misma escala.
+        sospechosos_posibles = FeatureConfig.CAUSAS_EXOGENAS
+        
+        explainer = shap.TreeExplainer(rf_model)
+        shap_values = explainer.shap_values(X_full)
+        feature_cols = X_full.columns.tolist()
+        
+        # Sigma local por barrio+uso para escalar la causa desconocida
+        df['_sigma_local'] = df.groupby([DatasetKeys.BARRIO, DatasetKeys.USO])[DatasetKeys.RESIDUO].transform('std').fillna(1).replace(0, 1)
         
         columnas_pct = []
-        for var, col_name in sospechosos.items():
-            df[col_name] = (df[f'peso_{var}'] / df['suma_pesos']) * 100
+        df['_total_peso'] = 0.0
+        
+        for var, col_name in sospechosos_posibles.items():
+            if var in feature_cols:
+                idx = feature_cols.index(var)
+                # |SHAP| ya está en escala m³/cto → normalizar por sigma local para hacerlo adimensional
+                df[f'shap_{var}'] = np.abs(shap_values[:, idx]) / df['_sigma_local']
+            else:
+                df[f'shap_{var}'] = 0.0
+            df['_total_peso'] += df[f'shap_{var}']
+            
+        # La causa desconocida = |z_error_final| (ya es adimensional y en la misma escala)
+        # Representa cuántas sigmas se aleja el consumo sin que ninguna variable externa lo explique
+        df['_peso_Desconocida'] = df[DatasetKeys.Z_ERROR_FINAL].abs()
+        df['_total_peso'] += df['_peso_Desconocida']
+        
+        # Evitar división por cero
+        df['_total_peso'] = df['_total_peso'].replace(0, 1)
+        
+        for var, col_name in sospechosos_posibles.items():
+            df[col_name] = (df[f'shap_{var}'] / df['_total_peso']) * 100
             columnas_pct.append(col_name)
             
-        df[DatasetKeys.PCT_CAUSA_DESCONOCIDA] = (df['peso_Desconocido'] / df['suma_pesos']) * 100
+        df[DatasetKeys.PCT_CAUSA_DESCONOCIDA] = (df['_peso_Desconocida'] / df['_total_peso']) * 100
         columnas_pct.append(DatasetKeys.PCT_CAUSA_DESCONOCIDA)
         
         # --- Umbrales del Semáforo (Niveles de Alerta) ---
@@ -205,7 +226,7 @@ class ModeloFisico:
         df[DatasetKeys.ALERTA_NIVEL] = np.select(condiciones, ModeloFisico.NIVEL_ALERTAS, default='Normal')
         
         # Limpieza de columnas intermedias temporales de pesos
-        cols_to_drop = [f'z_{var}' for var in sospechosos.keys()] + columnas_pesos + ['suma_pesos']
+        cols_to_drop = [f'shap_{var}' for var in sospechosos_posibles.keys()] + ['_peso_Desconocida', '_total_peso', '_sigma_local']
         df.drop(columns=cols_to_drop, inplace=True, errors='ignore')
         
         # Persistencia del checkpoint para auditoría
@@ -218,6 +239,26 @@ class ModeloFisico:
         ] + columnas_pct
             
         df[cols_to_save].drop_duplicates(subset=[DatasetKeys.BARRIO, DatasetKeys.USO, DatasetKeys.FECHA]).to_csv(Paths.PROC_CSV_AMAEM_FISICOS, index=False)
+        
+        # Exportación a carpeta /riesgos/
+        try:
+            Paths.PROC_CSV_RIESGOS_DIR.mkdir(exist_ok=True, parents=True)
+            for alerta_val in ModeloFisico.NIVEL_ALERTAS:
+                df_alerta = df[df[DatasetKeys.ALERTA_NIVEL] == alerta_val].copy()
+                
+                # Para redondear los porcentajes de visualización en el archivo
+                for c_pct in columnas_pct:
+                    df_alerta[c_pct] = df_alerta[c_pct].round(1).astype(str) + '%'
+                    
+                # Ordenamiento de mayor a menor gravedad (o viceversa para defectos)
+                ascending = 'DEFECTO' in alerta_val 
+                df_alerta = df_alerta.sort_values(DatasetKeys.Z_ERROR_FINAL, ascending=ascending)
+                
+                alerta_filename = f"{alerta_val}.csv"
+                df_alerta[cols_to_save].to_csv(Paths.PROC_CSV_RIESGOS_DIR / alerta_filename, index=False)
+            logger.info(f"Reportes de alerta de riesgos exportados en {Paths.PROC_CSV_RIESGOS_DIR}")
+        except Exception as e:
+            logger.error(f"Error generando exportación estratificada de alertas: {e}")
         
         logger.info("Enriquecimiento con variables físicas completado.")
         return df

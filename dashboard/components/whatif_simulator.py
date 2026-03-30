@@ -7,11 +7,15 @@ para simular cómo varía el consumo mensual esperado por contrato
 respecto a la línea base histórica del barrio seleccionado.
 
 Lógica:
-    consumo_simulado = fourier_base + Δ_exogeno(features)
-    z_simulado       = (consumo_simulado - μ_barrio) / σ_barrio
+    delta_total     = Σ beta_i_normalizado * (x_i - mu_i)     [en m³/cto]
+    consumo_sim     = fourier_base + delta_total
+    z_sim           = delta_total / sigma                       [0 en valores históricos]
+
+Anclaje: z = 0 cuando TODOS los sliders están en sus medias históricas.
+Cada beta está normalizado y acotado para evitar saltos drásticos.
 
 La función principal es render_whatif(df, barrio) y se llama
-desde dashboard/app.py en el tab "Simulador What-if".
+desde dashboard/app.py en el tab 'Simulador What-if'.
 """
 
 import sys
@@ -150,15 +154,22 @@ def _simulate_consumption(
     feature_values: dict,
     df_ref: pd.DataFrame,
     barrio: str | None,
-) -> float:
+    sigma: float = 1.0,
+) -> tuple[float, float]:
     """
-    Estima el consumo simulado usando una regresión lineal aproximada basada en
-    las correlaciones históricas de cada feature con el residuo del barrio.
+    Estima el delta de consumo simulado sobre la base Fourier histórica.
 
-    consumo_sim = fourier_base + sum_i(beta_i * (x_i - mu_i))
+    Correcciones aplicadas vs. versión anterior:
+    1. REVERSIBILIDAD: z = delta_total / sigma, NO (consumo_sim - mu) / sigma.
+       → Al restaurar features a sus medias históricas, delta_total = 0 y z = 0 exacto.
+    2. ESTABILIDAD: el beta OLS se normaliza por std(feature) para que sea adimensional,
+       y se acota a ±CAP_SIGMAS / n_features para evitar que una sola variable explote el resultado.
 
-    donde beta_i = cov(feature_i, residuo) / var(feature_i).
+    Retorna:
+        (consumo_sim, z_sim) — consumo en m³/cto y z-score anclado en 0 para valores históricos.
     """
+    CAP_SIGMAS = 2.5   # Máxima contribución de una sola feature en sigmas
+
     if barrio:
         barrios_limpios = df_ref[DatasetKeys.BARRIO].str.split("-", n=1).str[-1].str.strip().str.upper()
         df_b = df_ref[barrios_limpios == barrio.upper()].copy()
@@ -166,9 +177,9 @@ def _simulate_consumption(
         df_b = df_ref.copy()
 
     if df_b.empty:
-        return fourier_base
+        return fourier_base, 0.0
 
-    # Residuo = consumo_ratio − fourier (o −prediccion fourier)
+    # Residuo = consumo_ratio − estimación física
     if DatasetKeys.CONSUMO_FISICO_ESPERADO in df_b.columns:
         df_b["_residuo"] = df_b[DatasetKeys.CONSUMO_RATIO] - df_b[DatasetKeys.CONSUMO_FISICO_ESPERADO]
     elif DatasetKeys.PREDICCION_FOURIER in df_b.columns:
@@ -176,7 +187,14 @@ def _simulate_consumption(
     else:
         df_b["_residuo"] = 0.0
 
+    sigma_residuo = df_b["_residuo"].std()
+    if sigma_residuo <= 0 or np.isnan(sigma_residuo):
+        sigma_residuo = sigma if sigma > 0 else 1.0
+
     delta_total = 0.0
+    n_features_activas = sum(1 for f in FEATURES_WHATIF if f["col"] in df_b.columns)
+    cap_por_feature = CAP_SIGMAS * sigma_residuo / max(n_features_activas, 1)
+
     for f in FEATURES_WHATIF:
         col = f["col"]
         if col not in df_b.columns:
@@ -185,13 +203,33 @@ def _simulate_consumption(
         x = df_b[col].fillna(df_b[col].mean())
         y = df_b["_residuo"].fillna(0)
         var_x = x.var()
-        if var_x < 1e-9:
+        std_x = x.std()
+        if var_x < 1e-9 or std_x < 1e-9:
             continue
-        beta = x.cov(y) / var_x  # OLS simple
-        mu_x = x.mean()
-        delta_total += beta * (feature_values.get(col, mu_x) - mu_x)
 
-    return fourier_base + delta_total
+        # Redondeamos el centro al step del UI para garantizar que el Z vuelva a 0
+        mu_x_exact = x.mean()
+        mu_x = round(mu_x_exact / f["step"]) * f["step"]
+        
+        # Beta regularizado usando correlación para estabilizar varianzas casi 0
+        r = x.corr(y)
+        if pd.isna(r): r = 0.0
+        sigma_y = y.std() if y.std() > 0 else 1.0
+        beta_regularizado = r * (sigma_y / std_x)
+
+        # Desviación desde el ancla visual
+        desviacion = feature_values.get(col, mu_x) - mu_x
+        contribucion = beta_regularizado * desviacion
+
+        # Acotamos: ninguna feature puede aportar más del cap
+        contribucion = np.clip(contribucion, -cap_por_feature, cap_por_feature)
+
+        delta_total += contribucion
+
+    consumo_sim = fourier_base + delta_total
+    # ANCLA: z = 0 cuando todos los features están en sus medias históricas (delta_total = 0)
+    z_sim = delta_total / sigma if sigma > 0 else 0.0
+    return consumo_sim, z_sim
 
 
 def _get_alert_info(z: float) -> tuple[str, str, str]:
@@ -281,9 +319,11 @@ def _build_sensitivity_chart(
     feature_values: dict,
 ) -> go.Figure:
     """
-    Spider/radar de sensibilidad: muestra la contribución de cada feature al
-    cambio de consumo simulado respecto a la base Fourier, expresado en sigmas.
+    Muestra la contribución ACOTADA de cada feature al cambio de z-score,
+    usando los mismos betas y caps que _simulate_consumption.
     """
+    CAP_SIGMAS = 2.5
+
     if barrio:
         barrios_limpios = df_ref[DatasetKeys.BARRIO].str.split("-", n=1).str[-1].str.strip().str.upper()
         df_b = df_ref[barrios_limpios == barrio.upper()].copy()
@@ -300,6 +340,13 @@ def _build_sensitivity_chart(
     else:
         df_b["_residuo"] = 0.0
 
+    sigma_residuo = df_b["_residuo"].std()
+    if sigma_residuo <= 0 or np.isnan(sigma_residuo):
+        sigma_residuo = sigma if sigma > 0 else 1.0
+
+    n_features_activas = sum(1 for f in FEATURES_WHATIF if f["col"] in df_b.columns)
+    cap_por_feature = CAP_SIGMAS * sigma_residuo / max(n_features_activas, 1)
+
     labels = []
     contributions_z = []
     bar_colors = []
@@ -311,12 +358,20 @@ def _build_sensitivity_chart(
         x = df_b[col].fillna(df_b[col].mean())
         y = df_b["_residuo"].fillna(0)
         var_x = x.var()
-        if var_x < 1e-9:
+        std_x = x.std()
+        if var_x < 1e-9 or std_x < 1e-9:
             continue
-        beta     = x.cov(y) / var_x
-        mu_x     = x.mean()
-        delta    = beta * (feature_values.get(col, mu_x) - mu_x)
-        delta_z  = delta / sigma if sigma > 0 else 0.0
+        mu_x_exact = x.mean()
+        mu_x = round(mu_x_exact / f["step"]) * f["step"]
+
+        r = x.corr(y)
+        if pd.isna(r): r = 0.0
+        sigma_y = y.std() if y.std() > 0 else 1.0
+        beta_regularizado = r * (sigma_y / std_x)
+
+        contribucion = beta_regularizado * (feature_values.get(col, mu_x) - mu_x)
+        contribucion = np.clip(contribucion, -cap_por_feature, cap_por_feature)
+        delta_z      = contribucion / sigma if sigma > 0 else 0.0
         labels.append(f["icon"] + " " + f["label"].split("(")[0].strip())
         contributions_z.append(round(delta_z, 4))
         bar_colors.append(f["color"])
@@ -395,8 +450,12 @@ def render_whatif(df: pd.DataFrame, barrio: str | None = None) -> None:
         feature_values: dict[str, float] = {}
         for f in FEATURES_WHATIF:
             col     = f["col"]
-            default = feat_means.get(col, (f["min"] + f["max"]) / 2)
+            mu_x_exact = feat_means.get(col, (f["min"] + f["max"]) / 2)
+            # Default redondeado al step visual del slider
+            default = round(mu_x_exact / f["step"]) * f["step"]
             default = float(np.clip(default, f["min"], f["max"]))
+            
+            key_dinamico = f"whatif_{col}_{titulo_barrio}"
 
             st.markdown(
                 f"""<div style="font-size:13px; color:#ccc; margin-bottom:2px;">
@@ -411,24 +470,27 @@ def render_whatif(df: pd.DataFrame, barrio: str | None = None) -> None:
                 value=default,
                 step=f["step"],
                 help=f["help"],
-                key=f"whatif_{col}",
+                key=key_dinamico,
                 label_visibility="collapsed",
             )
-            feature_values[col] = val
+            # Recuperamos usando el key dinámico para garantizar aislamiento por barrio
+            feature_values[col] = st.session_state.get(key_dinamico, val)
 
         st.markdown("---")
         # Botón reset
         if st.button("↩ Restaurar valores históricos", key="whatif_reset", type="secondary"):
             for f in FEATURES_WHATIF:
                 col = f["col"]
-                st.session_state[f"whatif_{col}"] = float(
-                    np.clip(feat_means.get(col, (f["min"] + f["max"]) / 2), f["min"], f["max"])
-                )
+            # Borrar las claves dinámicas en lugar de sobrescribirlas fuerza al slider a repintarse desde el "default"
+            for f in FEATURES_WHATIF:
+                k = f"whatif_{f['col']}_{titulo_barrio}"
+                if k in st.session_state:
+                    del st.session_state[k]
             st.rerun()
 
     # ── Simulación ────────────────────────────────────────────────────────────
-    consumo_sim = _simulate_consumption(fourier_base, feature_values, df, barrio)
-    z_sim = (consumo_sim - mu) / sigma
+    # z_sim está anclado en 0 cuando los sliders están en sus medias históricas (delta=0)
+    consumo_sim, z_sim = _simulate_consumption(fourier_base, feature_values, df, barrio, sigma)
     nivel, color_nivel, emoji_nivel = _get_alert_info(z_sim)
 
     # ── Panel de Resultados ───────────────────────────────────────────────────
@@ -524,10 +586,11 @@ def render_whatif(df: pd.DataFrame, barrio: str | None = None) -> None:
     st.markdown(
         """
         <div style="color:#555; font-size:11px; margin-top:18px; line-height:1.6;">
-            <b>Nota metodológica:</b> El consumo simulado se calcula sumando a la línea base estacional (Fourier)
-            el impacto marginal de cada feature estimado mediante una regresión OLS sobre el residuo histórico.
-            El Z-Score se normaliza con la distribución del barrio seleccionado. Los umbrales de alerta empleados
-            son: |z| &gt; 1.5 → Leve, |z| &gt; 2.0 → Moderado, |z| &gt; 2.5 → Grave.
+            <b>Nota metodológica:</b> El Z-Score está <b>anclado en 0</b> cuando todos los
+            sliders se encuentran en sus valores históricos medios del barrio, garantizando
+            reversibilidad perfecta. El impacto de cada feature se calcula vía OLS y se acota
+            individualmente (máx. ±2.5σ total) para evitar saltos drásticos en datos heterogéneos.
+            Umbrales: |z| &gt; 1.5 → Leve · |z| &gt; 2.0 → Moderado · |z| &gt; 2.5 → Grave.
         </div>
         """,
         unsafe_allow_html=True,

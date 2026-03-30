@@ -19,6 +19,7 @@ class Paths:
     LOGS_DIR = INTERNAL / "logs"
     TEMP_DIR = INTERNAL / "temp"
     PROC_DIR = INTERNAL / "processed"
+    PROC_CSV_RIESGOS_DIR = PROC_DIR / "riesgos"
 
     ### --- Estructura de Datos Base --- ###
     DATA_DIR = INTERNAL / "data"
@@ -105,7 +106,7 @@ class Paths:
             cls.INTERNAL,
             cls.DATA_DIR,  cls.EXPERIMENTS_DIR, cls.LOGS_DIR, cls.TEMP_DIR, 
             cls.CONFIG_DIR,
-            cls.PROC_DIR
+            cls.PROC_DIR, cls.PROC_CSV_RIESGOS_DIR
         ]
         for d in dirs:
             d.mkdir(parents=True, exist_ok=True)
