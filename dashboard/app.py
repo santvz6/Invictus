@@ -391,11 +391,11 @@ with tab_mapa:
                     pct_conocida = 100.0 - pct_desconocida
 
                     # -- Indicador de Señal de Fraude (barra prominente) ----------
-                    if pct_desconocida >= 80:
+                    if pct_desconocida >= 70:
                         fraud_color = "#e74c3c"
                         fraud_emoji = "🔴"
                         fraud_label = "SEÑAL FUERTE DE FRAUDE"
-                    elif pct_desconocida >= 50:
+                    elif pct_desconocida >= 40:
                         fraud_color = "#e67e22"
                         fraud_emoji = "🟠"
                         fraud_label = "SEÑAL MODERADA"
