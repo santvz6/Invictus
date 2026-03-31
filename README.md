@@ -40,7 +40,7 @@ pip install -r requirements.txt
 python main.py --run
 
 # 3. Lanzar el dashboard
-streamlit run dashboard/app.py
+./venv/bin/streamlit run dashboard/app.py
 ```
 
 > [!NOTE]
