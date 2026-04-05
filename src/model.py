@@ -58,18 +58,22 @@ class ModeloFisico:
                 - RESIDUO
                 - CONSUMO_FISICO_ESPERADO
         """
-        logger.info("Iniciando cálculo de consumo físico esperado (Fourier + ML)...")
-        
+        logger.info("Iniciando cálculo de consumo físico esperado (Fourier Neutral + ML)...")
+
         # 1. Preparación y ordenación cronológica
         df = ModeloFisico._prepare_data(df)
 
-        # 2. Fase de Fourier: Estacionalidad base por segmento [Barrio x Uso]
-        df = ModeloFisico._calculate_fourier_baseline(df)
+        # 2. MEJORA 4: Añadir binarias estacionales (ortogonales a Fourier)
+        df = ModeloFisico._add_seasonal_features(df)
 
-        # 3. Fase de ML: Modelado del impacto de variables exógenas
+        # 3. Fase de Fourier: Estacionalidad base por segmento [Barrio x Uso]
+        #    MEJORA 3: Ajuste sólo sobre meses 'neutrales' (baja presión turística + sin festivos)
+        df = ModeloFisico._calculate_fourier_neutral_baseline(df)
+
+        # 4. Fase de ML: Modelado del impacto de variables exógenas
         df, rf_model, features_rf, X_full = ModeloFisico._calculate_ml_impact(df, feature_names)
 
-        # 4. Consolidación y persistencia
+        # 5. Consolidación y persistencia
         df = ModeloFisico._finalize_fisicos(df, rf_model, X_full)
 
         return df, rf_model, features_rf
@@ -82,37 +86,95 @@ class ModeloFisico:
         return df_copy.sort_values(by=[DatasetKeys.BARRIO, DatasetKeys.USO, DatasetKeys.FECHA])
 
     @staticmethod
-    def _calculate_fourier_baseline(df: pd.DataFrame) -> pd.DataFrame:
-        """Ajusta una onda estacional independiente para cada combinación de Barrio y Uso."""
+    def _add_seasonal_features(df: pd.DataFrame) -> pd.DataFrame:
+        """
+        MEJORA 4: Añade features binarias estacionales ortogonales a Fourier.
+
+        Estas variables son binarias (no sinusoidales), por lo que el RF puede aprender
+        sus efectos específicos sin interferir con la onda de Fourier.
+        Al contrario que Fourier, distinguen el tipo de evento (Semana Santa vs verano)
+        y permiten capturar su impacto diferencial en el consumo.
+        """
+        df = df.copy()
+        mes = pd.to_datetime(df[DatasetKeys.FECHA]).dt.month
+        df[DatasetKeys.SEMANA_SANTA] = mes.isin([3, 4]).astype(int)
+        df[DatasetKeys.VERANO]       = mes.isin([6, 7, 8]).astype(int)
+        df[DatasetKeys.NAVIDAD]      = mes.isin([12, 1]).astype(int)
+        logger.info("Features estacionales binarias añadidas: semana_santa, verano, navidad")
+        return df
+
+    @staticmethod
+    def _calculate_fourier_neutral_baseline(df: pd.DataFrame) -> pd.DataFrame:
+        """
+        MEJORA 3 - Opción B: Fourier ajustado sólo sobre meses 'neutros'.
+
+        Meses neutros = baja presión turística (pernoctaciones < mediana) Y sin festivos significativos.
+        Esto evita que Fourier 'robe' la señal del turismo de verano y Semana Santa,
+        dejando al RF espacio para aprender esos efectos en el residuo.
+
+        Si un segmento no tiene suficientes meses neutros (≤6), cae al ajuste completo como fallback
+        (equivalente al comportamiento anterior).
+        """
         df[DatasetKeys.PREDICCION_FOURIER] = 0.0
+
+        # Umbral de turismo: mediana global de pernoctaciones (si la columna existe)
+        col_pernoct = DatasetKeys.PERNOCT_VT_PROV_INE
+        if col_pernoct in df.columns:
+            mediana_turismo = df[col_pernoct].median()
+        else:
+            mediana_turismo = None
+
+        n_neutral = 0
+        n_fallback = 0
 
         for (barrio, uso), group in df.groupby([DatasetKeys.BARRIO, DatasetKeys.USO]):
             mask = (df[DatasetKeys.BARRIO] == barrio) & (df[DatasetKeys.USO] == uso)
-            
-            # Evitamos Data Leakage: Ajustamos Fourier SOLO con datos de 2022-2023
-            train_mask = group[DatasetKeys.FECHA].dt.year <= 2023
-            
+
             y_target_all = group[DatasetKeys.CONSUMO_RATIO].values
-            t_arr_all = np.arange(len(y_target_all))
-            
-            y_target_train = y_target_all[train_mask]
-            t_arr_train = t_arr_all[train_mask]
-            
+            t_arr_all    = np.arange(len(y_target_all))
+
+            # Identificar meses neutros para el ajuste de Fourier
+            if mediana_turismo is not None and DatasetKeys.DIAS_FESTIVOS in group.columns:
+                mask_neutro = (
+                    (group[col_pernoct] < mediana_turismo) &
+                    (group[DatasetKeys.DIAS_FESTIVOS] == 0)
+                ).values
+            else:
+                # Sin datos de turismo: usar solo el filtro de festivos
+                mask_neutro = (group[DatasetKeys.DIAS_FESTIVOS] == 0).values if DatasetKeys.DIAS_FESTIVOS in group.columns else np.ones(len(group), dtype=bool)
+
+            # Evitar Data Leakage: usar solo datos de 2022-2023 para el ajuste
+            train_mask = (group[DatasetKeys.FECHA].dt.year <= 2023).values
+            mask_neutro_train = mask_neutro & train_mask
+
+            # Úsamos meses neutros si hay suficientes (≥6)
+            use_neutral = mask_neutro_train.sum() >= 6
+
+            if use_neutral:
+                y_fit = y_target_all[mask_neutro_train]
+                t_fit = t_arr_all[mask_neutro_train]
+                n_neutral += 1
+            else:
+                # Fallback: ajuste completo con datos de 2022-2023
+                y_fit = y_target_all[train_mask]
+                t_fit = t_arr_all[train_mask]
+                n_fallback += 1
+
             try:
-                if len(y_target_train) > 0:
+                if len(y_fit) > 0:
                     coef, _ = curve_fit(
-                        ModeloFisico._modelo_fourier, t_arr_train, y_target_train, 
-                        p0=[0, np.mean(y_target_train), 1000, 1000, 100, 100], maxfev=10000
+                        ModeloFisico._modelo_fourier, t_fit, y_fit,
+                        p0=[0, np.mean(y_fit), 1000, 1000, 100, 100],
+                        maxfev=10000
                     )
                 else:
                     raise ValueError("Sin datos de entrenamiento")
-                # Predecimos para todos los meses (incluido 2024)
                 df.loc[mask, DatasetKeys.PREDICCION_FOURIER] = ModeloFisico._modelo_fourier(t_arr_all, *coef)
             except Exception:
-                # Fallback: Si el ajuste falla por falta de datos, se usa el valor medio histórico
                 logger.warning(f"Fallo en ajuste Fourier para {barrio} - {uso}. Aplicando media.")
-                df.loc[mask, DatasetKeys.PREDICCION_FOURIER] = np.mean(y_target_train) if len(y_target_train) > 0 else np.mean(y_target_all)
-        
+                df.loc[mask, DatasetKeys.PREDICCION_FOURIER] = np.mean(y_fit) if len(y_fit) > 0 else np.mean(y_target_all)
+
+        logger.info(f"Fourier NEUTRAL completado: {n_neutral} segmentos con ajuste neutral, {n_fallback} con fallback completo.")
         return df
 
     @staticmethod
@@ -170,45 +232,51 @@ class ModeloFisico:
         df[DatasetKeys.Z_ERROR_FINAL] = df.groupby([DatasetKeys.BARRIO, DatasetKeys.USO])[DatasetKeys.RESIDUO].transform(robust_zscore)
         
         # --- 4. Cálculo de Causas e Imputación AI (SHAP) ---
-        # Estrategia: los valores SHAP del RF están en unidades de consumo_ratio (m³/cto).
-        # Para que la "causa desconocida" sea comparable, usamos abs(z_error_final) normalizado
-        # por la desviación estándar local, mapeándolo de vuelta a la misma escala.
+        # MEJORA: múltiples features pueden apuntar a la misma causa (CAUSAS_EXOGENAS).
+        # Se ACUMULAN sus |SHAP| values en la misma causa (en lugar de sobrescribir).
         sospechosos_posibles = FeatureConfig.CAUSAS_EXOGENAS
-        
+
         explainer = shap.TreeExplainer(rf_model)
         shap_values = explainer.shap_values(X_full)
         feature_cols = X_full.columns.tolist()
-        
+
         # Sigma local por barrio+uso para escalar la causa desconocida
         df['_sigma_local'] = df.groupby([DatasetKeys.BARRIO, DatasetKeys.USO])[DatasetKeys.RESIDUO].transform('std').fillna(1).replace(0, 1)
-        
-        columnas_pct = []
+
         df['_total_peso'] = 0.0
-        
+
+        # 1. Inicializar todas las columnas de causa a 0 (sin duplicados)
+        columnas_pct_set = list(dict.fromkeys(sospechosos_posibles.values()))  # orden de inserción, sin duplicados
+        for col_name in columnas_pct_set:
+            df[f'_shap_{col_name}'] = 0.0
+
+        # 2. Acumular |SHAP| por cada feature en su grupo de causa
         for var, col_name in sospechosos_posibles.items():
             if var in feature_cols:
                 idx = feature_cols.index(var)
-                # |SHAP| ya está en escala m³/cto → normalizar por sigma local para hacerlo adimensional
-                df[f'shap_{var}'] = np.abs(shap_values[:, idx]) / df['_sigma_local']
+                # |SHAP| ya está en escala m³/cto → normalizar por sigma local
+                shap_var = np.abs(shap_values[:, idx]) / df['_sigma_local']
             else:
-                df[f'shap_{var}'] = 0.0
-            df['_total_peso'] += df[f'shap_{var}']
-            
-        # La causa desconocida = |z_error_final| (ya es adimensional y en la misma escala)
-        # Representa cuántas sigmas se aleja el consumo sin que ninguna variable externa lo explique
+                shap_var = 0.0
+            df[f'_shap_{col_name}'] += shap_var
+            df['_total_peso'] += shap_var if not isinstance(shap_var, float) else pd.Series([shap_var] * len(df), index=df.index)
+
+        # 3. La causa desconocida = |z_error_final| (ya es adimensional)
         df['_peso_Desconocida'] = df[DatasetKeys.Z_ERROR_FINAL].abs()
         df['_total_peso'] += df['_peso_Desconocida']
-        
+
         # Evitar división por cero
         df['_total_peso'] = df['_total_peso'].replace(0, 1)
-        
-        for var, col_name in sospechosos_posibles.items():
-            df[col_name] = (df[f'shap_{var}'] / df['_total_peso']) * 100
+
+        # 4. Convertir a porcentajes
+        columnas_pct = []
+        for col_name in columnas_pct_set:
+            df[col_name] = (df[f'_shap_{col_name}'] / df['_total_peso']) * 100
             columnas_pct.append(col_name)
-            
+
         df[DatasetKeys.PCT_CAUSA_DESCONOCIDA] = (df['_peso_Desconocida'] / df['_total_peso']) * 100
         columnas_pct.append(DatasetKeys.PCT_CAUSA_DESCONOCIDA)
-        
+
         # --- Umbrales del Semáforo (Niveles de Alerta) ---
         z_leve = 1.5
         z_mod = 2.0

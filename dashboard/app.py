@@ -33,6 +33,7 @@ pd.set_option('future.no_silent_downcasting', True)
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
 from src.config import DatasetKeys
+from src.config.paths import Paths
 from dashboard.data_loader import (
     load_dataframe, load_geodataframe, filter_dataframe,
     aggregate_by_barrio, FEATURES_DISPONIBLES, BARRIOS_ALICANTE,
@@ -421,24 +422,24 @@ with tab_mapa:
 
                     def _build_hover(row):
                         """Tooltip con nivel + Z-score + porcentajes SHAP de ese mes."""
-                        nivel_txt = str(row.get(DatasetKeys.ALERTA_NIVEL, "—"))
-                        z_val     = row.get(DatasetKeys.Z_ERROR_FINAL, float("nan"))
-                        p_calor   = row.get(DatasetKeys.PCT_CALOR_FRIO, 0) or 0
-                        p_lluvia  = row.get(DatasetKeys.PCT_LLUVIA_SEQUIA, 0) or 0
-                        p_ndvi    = row.get(DatasetKeys.PCT_VEGETACION, 0) or 0
-                        p_turismo = row.get(DatasetKeys.PCT_TURISMO, 0) or 0
-                        p_fiesta  = row.get(DatasetKeys.PCT_FIESTA, 0) or 0
-                        p_desc    = row.get(DatasetKeys.PCT_CAUSA_DESCONOCIDA, 0) or 0
+                        nivel_txt  = str(row.get(DatasetKeys.ALERTA_NIVEL, "—"))
+                        z_val      = row.get(DatasetKeys.Z_ERROR_FINAL, float("nan"))
+                        p_calor    = row.get(DatasetKeys.PCT_CALOR_FRIO,        0) or 0
+                        p_lluvia   = row.get(DatasetKeys.PCT_LLUVIA_SEQUIA,     0) or 0
+                        p_ndvi     = row.get(DatasetKeys.PCT_VEGETACION,        0) or 0
+                        p_turismo  = row.get(DatasetKeys.PCT_TURISMO,           0) or 0
+                        p_fiesta   = row.get(DatasetKeys.PCT_FIESTA,            0) or 0
+                        p_desc     = row.get(DatasetKeys.PCT_CAUSA_DESCONOCIDA, 0) or 0
                         z_str = f"{z_val:.2f} σ" if pd.notna(z_val) else "—"
                         return (
                             f"<b>Nivel: {nivel_txt}</b>   Z = {z_str}<br>"
                             f"─────────────────────────<br>"
-                            f"🌡️ Clima Temp.:    {p_calor:.1f}%<br>"
-                            f"🌧️ Clima Preci.:   {p_lluvia:.1f}%<br>"
-                            f"🌿 Vegetación:     {p_ndvi:.1f}%<br>"
-                            f"🏠 Turismo Ilegal: {p_turismo:.1f}%<br>"
-                            f"🎉 Festividades:   {p_fiesta:.1f}%<br>"
-                            f"❓ Causa Descon.:  {p_desc:.1f}%"
+                            f"🌡️ Clima Temp.:        {p_calor:.1f}%<br>"
+                            f"🌧️ Clima Preci.:       {p_lluvia:.1f}%<br>"
+                            f"🌿 Vegetación:         {p_ndvi:.1f}%<br>"
+                            f"🏖️ Turismo (Pernoc.): {p_turismo:.1f}%<br>"
+                            f"🎉 Festividades:       {p_fiesta:.1f}%<br>"
+                            f"❓ Causa Descon.:     {p_desc:.1f}%"
                         )
 
                     # 🔴 Exceso Grave (siempre en leyenda)
@@ -522,101 +523,78 @@ with tab_mapa:
 
                 st.plotly_chart(fig_panel, use_container_width=True)
                 
-                # Desglose de anomalías con KPIs rápidos
-                if 'es_alerta' in df_panel_temporal.columns and df_panel_temporal['es_alerta'].any():
-                    alertas_activas = int((df_panel[DatasetKeys.ALERTA_NIVEL] != "Normal").sum())
-                    st.markdown(
-                        f"""<div style='background:rgba(231,76,60,0.1); border-left:3px solid #e74c3c; padding:10px 15px; border-radius:4px; margin-bottom:15px;'>
-                            <span style='color:#e74c3c; font-weight:700;'>{alertas_activas} ALERTAS ACTIVAS</span> 
-                            <span style='color:#aaa; font-size:13px;'> — Promedio de causalidad detectada:</span>
-                        </div>""", unsafe_allow_html=True
-                    )
-                    
-                    df_alertas = df_panel_temporal[df_panel_temporal['es_alerta'] > 0]
-                    impact_data_raw = {
-                        "Clima Temp.":      df_alertas.get(DatasetKeys.PCT_CALOR_FRIO,      pd.Series([0])).mean(),
-                        "Clima Preci.":     df_alertas.get(DatasetKeys.PCT_LLUVIA_SEQUIA,   pd.Series([0])).mean(),
-                        "Vegetación":       df_alertas.get(DatasetKeys.PCT_VEGETACION,      pd.Series([0])).mean(),
-                        "Turismo Ilegal":   df_alertas.get(DatasetKeys.PCT_TURISMO,         pd.Series([0])).mean(),
-                        "Festividades":     df_alertas.get(DatasetKeys.PCT_FIESTA,          pd.Series([0])).mean(),
-                    }
-                    pct_desconocida = df_alertas.get(DatasetKeys.PCT_CAUSA_DESCONOCIDA, pd.Series([0])).mean()
-                    pct_desconocida = pct_desconocida if not pd.isna(pct_desconocida) else 0.0
-                    pct_conocida = 100.0 - pct_desconocida
+                # ── Tabla de Alertas del Barrio (CSVs de Riesgos) ────────────────
+                import glob
 
-                    # -- Indicador de Señal de Fraude (barra prominente) ----------
-                    if pct_desconocida >= 70:
-                        fraud_color = "#e74c3c"
-                        fraud_emoji = "🔴"
-                        fraud_label = "SEÑAL FUERTE DE FRAUDE"
-                    elif pct_desconocida >= 40:
-                        fraud_color = "#e67e22"
-                        fraud_emoji = "🟠"
-                        fraud_label = "SEÑAL MODERADA"
+                riesgos_dir = Paths.PROC_CSV_RIESGOS_DIR
+                nombres_alertas = {
+                    "1_EXCESO_Grave":    ("🔴", "#e74c3c"),
+                    "2_EXCESO_Moderado": ("🟠", "#e67e22"),
+                    "3_EXCESO_Leve":     ("🟡", "#f39c12"),
+                    "4_DEFECTO_Grave":   ("🔵", "#3498db"),
+                    "5_DEFECTO_Moderado":("💙", "#5dade2"),
+                    "6_DEFECTO_Leve":    ("🩵", "#85c1e9"),
+                }
+
+                barrio_norm = st.session_state.barrio_seleccionado  # ya en upper
+
+                alertas_encontradas = False
+                for nivel_key, (emoji, color) in nombres_alertas.items():
+                    csv_path = riesgos_dir / f"{nivel_key}.csv"
+                    if not csv_path.exists():
+                        continue
+                    try:
+                        df_csv = pd.read_csv(csv_path)
+                    except Exception:
+                        continue
+
+                    # Filtrar por barrio (normalizar para comparar)
+                    if DatasetKeys.BARRIO in df_csv.columns:
+                        barrio_col = df_csv[DatasetKeys.BARRIO].astype(str).str.split("-", n=1).str[-1].str.strip().str.upper()
+                        df_csv_barrio = df_csv[barrio_col == barrio_norm].copy()
                     else:
-                        fraud_color = "#52b788"
-                        fraud_emoji = "🟢"
-                        fraud_label = "FACTORES CONOCIDOS PREDOMINAN"
+                        # Fallback: buscar en todas las columnas de texto
+                        df_csv_barrio = df_csv[df_csv.apply(
+                            lambda row: any(barrio_norm in str(v).upper() for v in row), axis=1
+                        )].copy()
 
+                    if df_csv_barrio.empty:
+                        continue
+
+                    # Filtrar por Uso si aplica
+                    if DatasetKeys.USO in df_csv_barrio.columns and uso_filtro != "Todos los usos":
+                        df_csv_barrio = df_csv_barrio[df_csv_barrio[DatasetKeys.USO] == uso_filtro]
+
+                    # Filtrar por Rango Temporal
+                    if DatasetKeys.FECHA in df_csv_barrio.columns and not df_csv_barrio.empty:
+                        fechas_csv = pd.to_datetime(df_csv_barrio[DatasetKeys.FECHA], errors='coerce')
+                        mask = (fechas_csv >= fecha_inicio) & (fechas_csv <= fecha_fin)
+                        df_csv_barrio = df_csv_barrio[mask]
+                        
+                    if df_csv_barrio.empty:
+                        continue
+
+                    alertas_encontradas = True
                     st.markdown(
-                        f"""
-                        <div style="background:rgba({
-                            '231,76,60' if pct_desconocida>=80 else
-                            '230,126,34' if pct_desconocida>=50 else
-                            '82,183,136'
-                        },0.12); border:1px solid {fraud_color}; border-radius:10px; padding:14px 18px; margin-bottom:14px;">
-                            <div style="display:flex; align-items:center; gap:10px; margin-bottom:8px;">
-                                <span style="font-size:20px;">{fraud_emoji}</span>
-                                <span style="color:{fraud_color}; font-weight:700; font-size:15px;">{fraud_label}</span>
-                            </div>
-                            <div style="font-size:12px; color:#bbb; margin-bottom:10px;">
-                                <b style="color:#fff; font-size:18px;">{pct_desconocida:.1f}%</b> del consumo anómalo 
-                                no puede atribuirse a factores externos conocidos (clima, turismo, festivos).<br>
-                                <span style="color:#aaa;">Un porcentaje alto de inexplicabilidad es la principal señal de VT ilegal.</span>
-                            </div>
-                            <!-- Barra de progreso bicolor -->
-                            <div style="background:rgba(255,255,255,0.08); border-radius:6px; height:12px; overflow:hidden;">
-                                <div style="width:{pct_conocida:.1f}%; background:linear-gradient(90deg,#4cc9f0,#52b788); height:100%; float:left; border-radius:6px 0 0 6px;"></div>
-                                <div style="width:{pct_desconocida:.1f}%; background:{fraud_color}; height:100%; float:left; opacity:0.7; border-radius:0 6px 6px 0;"></div>
-                            </div>
-                            <div style="display:flex; justify-content:space-between; font-size:10px; color:#888; margin-top:4px;">
-                                <span>✅ {pct_conocida:.1f}% Explicado por factores conocidos</span>
-                                <span>{fraud_emoji} {pct_desconocida:.1f}% Inexplicado (señal fraude)</span>
-                            </div>
-                        </div>
-                        """,
-                        unsafe_allow_html=True,
+                        f"""<div style='border-left:3px solid {color}; padding:6px 12px; 
+                        margin-bottom:6px; background:rgba(255,255,255,0.03); border-radius:4px;'>
+                        <b style='color:{color};'>{emoji} {nivel_key.replace('_',' ')}</b>
+                        <span style='color:#888; font-size:12px; margin-left:8px;'>
+                        — {len(df_csv_barrio)} registro(s)</span></div>""",
+                        unsafe_allow_html=True
+                    )
+                    # Mostrar columnas relevantes
+                    cols_show = [c for c in df_csv_barrio.columns
+                                 if not c.startswith('litros_') and not c.startswith('shap_')]
+                    st.dataframe(
+                        df_csv_barrio[cols_show].reset_index(drop=True),
+                        use_container_width=True,
+                        hide_index=True,
                     )
 
-                    # -- Gráfico horizontal de factores conocidos -----------------
-                    known_items = {k: v for k, v in impact_data_raw.items()
-                                   if not pd.isna(v) and v > 0.05}
-                    if known_items:
-                        fig_bar_h = go.Figure(go.Bar(
-                            x=list(known_items.values()),
-                            y=list(known_items.keys()),
-                            orientation='h',
-                            marker_color=["#f39c12","#4cc9f0","#52b788","#e74c3c","#9b59b6"][:len(known_items)],
-                            text=[f"{v:.1f}%" for v in known_items.values()],
-                            textposition="outside",
-                            textfont=dict(color="#e0e0e0", size=11),
-                        ))
-                        fig_bar_h.update_layout(
-                            template="plotly_dark",
-                            paper_bgcolor="rgba(0,0,0,0)",
-                            plot_bgcolor="rgba(255,255,255,0.02)",
-                            margin=dict(l=0, r=60, t=8, b=0),
-                            xaxis=dict(title="% atribuido", range=[0, max(known_items.values())*1.4],
-                                       gridcolor="rgba(255,255,255,0.06)"),
-                            yaxis=dict(gridcolor="rgba(0,0,0,0)"),
-                            height=180,
-                            showlegend=False,
-                            title=dict(text="Factores conocidos identificados", font=dict(size=12, color="#aaa"),
-                                       x=0, pad=dict(b=4))
-                        )
-                        st.plotly_chart(fig_bar_h, use_container_width=True)
-                else:
+                if not alertas_encontradas:
                     st.success("No se han registrado anomalías en este barrio para el filtro seleccionado.")
+
             else:
                 st.info("No hay datos temporales para visualizar.")
         else:

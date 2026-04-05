@@ -959,21 +959,12 @@ def render_whatif(df: pd.DataFrame, barrio: str | None = None) -> None:
                 unsafe_allow_html=True,
             )
 
-    # ── Fila inferior: Waterfall + Radar ──────────────────────────────────────
+    # ── Fila inferior: Waterfall (ancho completo) ─────────────────────────────
     st.markdown("---")
-    col_wfall, col_radar = st.columns(2, gap="large")
-
-    with col_wfall:
-        st.markdown("##### Construcción del Consumo Simulado")
-        st.caption("Cada feature suma o resta al valor base Fourier.")
-        fig_wfall = _build_waterfall_chart(engine, result)
-        st.plotly_chart(fig_wfall, use_container_width=True, key="wfall_whatif")
-
-    with col_radar:
-        st.markdown("##### Perfil del Escenario (Desviación σ)")
-        st.caption("Centro = valores históricos del barrio. Anillos = ±1σ / ±2σ.")
-        fig_radar = _build_radar_chart(engine, feature_values)
-        st.plotly_chart(fig_radar, use_container_width=True, key="radar_whatif")
+    st.markdown("##### Construcción del Consumo Simulado")
+    st.caption("Cada feature suma o resta al valor base Fourier.")
+    fig_wfall = _build_waterfall_chart(engine, result)
+    st.plotly_chart(fig_wfall, use_container_width=True, key="wfall_whatif")
 
     # ── Perfil anual ──────────────────────────────────────────────────────────
     st.markdown("---")

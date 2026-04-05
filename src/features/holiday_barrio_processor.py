@@ -29,6 +29,7 @@ class HolidayBarrioProcessor:
             pd.DataFrame: Dataset enriquecido con información de festivos:
                 - DIAS_FESTIVOS
                 - PCT_FESTIVOS
+                - ES_PUENTE  (binaria: ≥2 días festivos en el mes → efecto puente)
         """
         logger.info("Iniciando enriquecimiento con datos de festivos por barrio...")
         
@@ -113,17 +114,28 @@ class HolidayBarrioProcessor:
 
     @staticmethod
     def _finalize_data(df_final: pd.DataFrame) -> pd.DataFrame:
-        """Limpia columnas técnicas, imputa nulos y persiste el punto de control."""
+        """Limpia columnas técnicas, imputa nulos, añade ES_PUENTE y persiste el punto de control."""
         df_final = df_final.drop(columns=['fecha_cruce_mensual'])
 
-        cols_festivos = [DatasetKeys.DIAS_FESTIVOS, DatasetKeys.PCT_FESTIVOS] 
+        cols_festivos = [DatasetKeys.DIAS_FESTIVOS, DatasetKeys.PCT_FESTIVOS]
         for col in cols_festivos:
             if col in df_final.columns:
-                df_final[col] = df_final[col].fillna(0) # Si no hay dato, asumimos 0 festivos
-                
+                df_final[col] = df_final[col].fillna(0)  # Si no hay dato, asumimos 0 festivos
+
+        # MEJORA 2: Feature de Puente
+        # Un mes con ≥2 días festivos tiene alto riesgo de 'puente' (el efecto sobre el consumo
+        # es diferente al de días festivos aislados).
+        if DatasetKeys.DIAS_FESTIVOS in df_final.columns:
+            df_final[DatasetKeys.ES_PUENTE] = (df_final[DatasetKeys.DIAS_FESTIVOS] >= 2).astype(int)
+        else:
+            df_final[DatasetKeys.ES_PUENTE] = 0
+
         # Registro del checkpoint
         logger.info(f"Registrando dataset intermedio de festivos en {Paths.PROC_CSV_STEP_FESTIVOS}")
-        cols_to_save = [DatasetKeys.BARRIO, DatasetKeys.FECHA] + [c for c in cols_festivos if c in df_final.columns]
+        cols_to_save = [DatasetKeys.BARRIO, DatasetKeys.FECHA] + [
+            c for c in [DatasetKeys.DIAS_FESTIVOS, DatasetKeys.PCT_FESTIVOS, DatasetKeys.ES_PUENTE]
+            if c in df_final.columns
+        ]
         df_final[cols_to_save].drop_duplicates().to_csv(Paths.PROC_CSV_STEP_FESTIVOS, index=False)
 
         return df_final

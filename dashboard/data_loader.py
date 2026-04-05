@@ -38,11 +38,11 @@ BARRIOS_ALICANTE = [
 ]
 
 FEATURES_DISPONIBLES = {
-    "Consumo Total (m³)":        DatasetKeys.CONSUMO,
-    "Nº Contratos":              DatasetKeys.NUM_CONTRATOS,
-    "Ratio Consumo/Contrato":    DatasetKeys.CONSUMO_RATIO,
-    "% VT sin registrar":        DatasetKeys.PCT_VT_SIN_REGISTRAR,
-    "Z-Score Residual Físico":   DatasetKeys.Z_ERROR_FINAL,
+    "Consumo Total (m³)":          DatasetKeys.CONSUMO,
+    "Nº Contratos":                DatasetKeys.NUM_CONTRATOS,
+    "Ratio Consumo/Contrato":      DatasetKeys.CONSUMO_RATIO,
+    "Pernoctaciones Turísticas":   DatasetKeys.PERNOCT_VT_PROV_INE,
+    "Z-Score Residual Físico":     DatasetKeys.Z_ERROR_FINAL,
 }
 
 
@@ -126,7 +126,9 @@ def aggregate_by_barrio(df: pd.DataFrame) -> pd.DataFrame:
         DatasetKeys.CONSUMO:                  "sum",
         DatasetKeys.NUM_CONTRATOS:            "mean",
         DatasetKeys.CONSUMO_RATIO:            "mean",
-        DatasetKeys.PCT_VT_SIN_REGISTRAR:     "mean",
+        DatasetKeys.OCUP_VT_PROV_INE:        "mean",
+        DatasetKeys.PERNOCT_VT_PROV_INE:     "mean",
+        DatasetKeys.DIAS_FESTIVOS:            "mean",
         DatasetKeys.TEMP_MEDIA:               "mean",
         DatasetKeys.PRECIPITACION:            "mean",
         DatasetKeys.CONSUMO_FISICO_ESPERADO:  "sum",

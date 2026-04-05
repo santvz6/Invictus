@@ -47,16 +47,22 @@ class DatasetKeys:
     PLAZAS_HOTELES_BARRIO_GVA = "plazas_hoteles_barrio_gva"
 
     # --- Datos de Festivos ---
-    DIAS_FESTIVOS = "dias_festivos"
-    PCT_FESTIVOS  = "pct_festivos"
+    DIAS_FESTIVOS    = "dias_festivos"
+    PCT_FESTIVOS     = "pct_festivos"      # Mantenido por compatibilidad
+    ES_PUENTE        = "es_puente"         # Binaria: ≥2 festivos en el mes (MEJORA 2)
+
+    # --- Features Estacionales Binarias (ortogonales a Fourier) (MEJORA 4) ---
+    SEMANA_SANTA = "semana_santa"          # Binaria: mes in [3, 4]
+    VERANO       = "verano"               # Binaria: mes in [6, 7, 8]
+    NAVIDAD      = "navidad"              # Binaria: mes in [12, 1]
     
     # --- Causas de Anomalías (Físicos 6 Niveles) ---
     Z_ERROR_FINAL = "z_error_final"
-    ALERTA_NIVEL = "alerta_nivel"
-    
-    PCT_CALOR_FRIO = "pct_calor_frio"
-    PCT_LLUVIA_SEQUIA = "pct_lluvia_sequia"
-    PCT_VEGETACION = "pct_vegetacion"
-    PCT_TURISMO = "pct_turismo"
-    PCT_FIESTA = "pct_fiesta"
+    ALERTA_NIVEL  = "alerta_nivel"
+
+    PCT_CALOR_FRIO        = "pct_calor_frio"
+    PCT_LLUVIA_SEQUIA     = "pct_lluvia_sequia"
+    PCT_VEGETACION        = "pct_vegetacion"
+    PCT_TURISMO           = "pct_turismo"           # Presión turística real (pernoctaciones)
+    PCT_FIESTA            = "pct_fiesta"            # Festivos + estacional
     PCT_CAUSA_DESCONOCIDA = "pct_causa_desconocida"
