@@ -122,6 +122,23 @@ class WaterPreprocessor:
         return df
     
     @staticmethod
+    def _add_seasonal_features(df: pd.DataFrame) -> pd.DataFrame:
+        """
+        Añade features binarias estacionales ortogonales a Fourier.
+        
+        Estas variables binarias permiten que el Random Forest aprenda efectos 
+        específicos de cada estación (Semana Santa, Verano, Navidad) sin interferir 
+        con la onda de Fourier.
+        """
+        df = df.copy()
+        mes = pd.to_datetime(df[DatasetKeys.FECHA]).dt.month
+        df[DatasetKeys.SEMANA_SANTA] = mes.isin([3, 4]).astype(int)
+        df[DatasetKeys.VERANO]       = mes.isin([6, 7, 8]).astype(int)
+        df[DatasetKeys.NAVIDAD]      = mes.isin([12, 1]).astype(int)
+        logger.info("Features estacionales binarias añadidas: semana_santa, verano, navidad")
+        return df
+
+    @staticmethod
     def _save_processed_df(df_not_scaled: pd.DataFrame, df_scaled: pd.DataFrame) -> None:
         """Centraliza la persistencia de los diferentes estados del dataset."""
         df_not_scaled.to_csv(Paths.PROC_CSV_AMAEM_NOT_SCALED, index=False)
@@ -148,6 +165,9 @@ class WaterPreprocessor:
         
         # Fase D: Enriquecimiento de Festivos
         df_not_scaled = HolidayBarrioProcessor.process(df_not_scaled)
+
+        # Fase F: Añadir features estacionales binarias
+        df_not_scaled = WaterPreprocessor._add_seasonal_features(df_not_scaled)
 
         # Fase E: Ingeniería de Variables de Fraude (Gap de Ilegalidad)
         df_not_scaled = WaterPreprocessor._INE_GVA_gap(df_not_scaled)
