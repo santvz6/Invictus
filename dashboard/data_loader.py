@@ -146,4 +146,13 @@ def aggregate_by_barrio(df: pd.DataFrame) -> pd.DataFrame:
     # Redondeo seguro para que los Tooltips no muestren números con decimales infinitos
     num_cols = df_agg.select_dtypes(include=[np.number]).columns
     df_agg[num_cols] = df_agg[num_cols].round(2)
+
+    # ── FIX: Convertir todos los tipos numpy a tipos Python nativos.
+    # numpy.int64 / float64 no son serializables por el JSON nativo de Python 3.14
+    # que usa Jinja2/branca. Esto afecta al colormap, los tooltips y el GeoJson.
+    for col in df_agg.select_dtypes(include=["int64", "int32", "int16", "int8"]).columns:
+        df_agg[col] = df_agg[col].astype(int)
+    for col in df_agg.select_dtypes(include=["float64", "float32"]).columns:
+        df_agg[col] = df_agg[col].astype(float)
+
     return df_agg

@@ -7,8 +7,26 @@ Lanzar con:
 
 import sys
 import os
+import json
+import numpy as np
 import pandas as pd
 import streamlit as st
+
+# ── Patch global del JSON encoder para compatibilidad con Python 3.14 ────────
+# Python 3.14 rechaza numpy.int64/float64 en json.dumps (más estricto que 3.12).
+# Folium/branca/Jinja2 usan json.dumps internamente sin encoder personalizado,
+# por lo que parcheamos JSONEncoder.default UNA vez aquí para toda la sesión.
+_orig_json_default = json.JSONEncoder.default
+
+def _numpy_safe_default(self, obj):
+    if isinstance(obj, np.integer):   return int(obj)
+    if isinstance(obj, np.floating):  return float(obj)
+    if isinstance(obj, np.ndarray):   return obj.tolist()
+    if isinstance(obj, np.bool_):     return bool(obj)
+    return _orig_json_default(self, obj)
+
+json.JSONEncoder.default = _numpy_safe_default
+# ─────────────────────────────────────────────────────────────────────────────
 
 # ── Configuración de pandas y ruta para src/ ──────────────────────────────
 pd.set_option('future.no_silent_downcasting', True)
@@ -169,6 +187,31 @@ with st.sidebar:
     fecha_fin    = mapeo_fechas[rango_sel[1]] + pd.offsets.MonthEnd(0)
 
 
+    st.markdown("#### 🔍 Buscar Barrio")
+    todos_barrios = sorted(df_full[DatasetKeys.BARRIO].str.split("-", n=1).str[-1].str.strip().str.upper().unique().tolist())
+    query_busqueda = st.text_input(
+        "Escribe un barrio...",
+        value="",
+        placeholder="Ej: Benalua, Juan XXIII...",
+        key="buscar_barrio_input",
+        label_visibility="collapsed",
+    )
+    if query_busqueda.strip():
+        q = query_busqueda.strip().upper()
+        coincidencias = [b for b in todos_barrios if q in b]
+        if len(coincidencias) == 1:
+            if st.session_state.barrio_seleccionado != coincidencias[0]:
+                st.session_state.barrio_seleccionado = coincidencias[0]
+                st.rerun()
+        elif coincidencias:
+            st.markdown("<div style='font-size:12px; color:#888; margin-top:4px;'>Sugerencias:</div>", unsafe_allow_html=True)
+            for sug in coincidencias[:6]:
+                if st.button(sug, key=f"sug_{sug}", use_container_width=True):
+                    st.session_state.barrio_seleccionado = sug
+                    st.rerun()
+        else:
+            st.markdown("<div style='font-size:11px; color:#e74c3c;'>Sin coincidencias</div>", unsafe_allow_html=True)
+
     st.markdown("#### Filtro por Barrio")
     barrios_lista = ["Todos los barrios"] + sorted(df_full[DatasetKeys.BARRIO].unique().tolist())
     barrio_filtro = st.selectbox("Barrio / Contrato", barrios_lista, key="sidebar_barrio")
@@ -319,6 +362,11 @@ with tab_mapa:
                     
                 if 'es_alerta' in df_panel.columns:
                     agg_cols['es_alerta'] = 'max'
+                # Nivel de alerta y Z-score para el tooltip por punto
+                if DatasetKeys.ALERTA_NIVEL in df_panel.columns:
+                    agg_cols[DatasetKeys.ALERTA_NIVEL] = lambda x: x.mode()[0] if len(x) > 0 else "Normal"
+                if DatasetKeys.Z_ERROR_FINAL in df_panel.columns:
+                    agg_cols[DatasetKeys.Z_ERROR_FINAL] = 'mean'
                 
                 if agg_cols:
                     df_panel_temporal = df_panel.groupby(DatasetKeys.FECHA).agg(agg_cols).reset_index()
@@ -332,41 +380,147 @@ with tab_mapa:
                 
                 import plotly.graph_objects as go
                 fig_panel = go.Figure()
-                
+
                 fechas_str = df_panel_temporal[DatasetKeys.FECHA].dt.strftime("%Y-%m")
-                
+
+                # ── Banda verde de normalidad ±1.5σ ──────────────────────────────
+                sigma_consumo = val_real.std() if val_real.std() > 0 else 1.0
+                banda_sup = val_est + 1.5 * sigma_consumo
+                banda_inf = (val_est - 1.5 * sigma_consumo).clip(lower=0)
                 fig_panel.add_trace(go.Scatter(
-                    x=fechas_str, y=val_real,
-                    mode="lines+markers", name="Real (m³/cto)",
-                    line=dict(color="#4cc9f0", width=2)
-                ))
-                
-                fig_panel.add_trace(go.Scatter(
-                    x=fechas_str, y=val_est,
-                    mode="lines", name="Estimado",
-                    line=dict(color="#f4a261", width=2, dash="dash")
+                    x=pd.concat([fechas_str, fechas_str.iloc[::-1]]),
+                    y=pd.concat([banda_sup, banda_inf.iloc[::-1]]),
+                    fill="toself",
+                    fillcolor="rgba(82,183,136,0.12)",
+                    line=dict(color="rgba(0,0,0,0)"),
+                    hoverinfo="skip",
+                    showlegend=True,
+                    name="Normalidad (Z < 1.5)",
                 ))
 
-                if 'es_alerta' in df_panel_temporal.columns:
-                    mask_alertas = df_panel_temporal['es_alerta'] > 0
-                    if mask_alertas.any():
+                # ── Predicción IA (Fourier + RF) ─────────────────────────────────
+                fig_panel.add_trace(go.Scatter(
+                    x=fechas_str, y=val_est,
+                    mode="lines", name="Predicción IA",
+                    line=dict(color="#f4a261", width=2, dash="dash"),
+                    hovertemplate="<b>%{x}</b><br>Predicción: %{y:.2f} m³/cto<extra></extra>"
+                ))
+
+                # ── Consumo Real ──────────────────────────────────────────────────
+                fig_panel.add_trace(go.Scatter(
+                    x=fechas_str, y=val_real,
+                    mode="lines+markers", name="Consumo Real",
+                    line=dict(color="#e0e0e0", width=2),
+                    marker=dict(size=4, color="#e0e0e0"),
+                    hovertemplate="<b>%{x}</b><br>Real: %{y:.2f} m³/cto<extra></extra>"
+                ))
+
+                # ── Marcadores de anomalía color-coded por nivel ──────────────────
+                if DatasetKeys.ALERTA_NIVEL in df_panel_temporal.columns:
+                    col_nivel = df_panel_temporal[DatasetKeys.ALERTA_NIVEL]
+
+                    def _build_hover(row):
+                        """Tooltip con nivel + Z-score + porcentajes SHAP de ese mes."""
+                        nivel_txt = str(row.get(DatasetKeys.ALERTA_NIVEL, "—"))
+                        z_val     = row.get(DatasetKeys.Z_ERROR_FINAL, float("nan"))
+                        p_calor   = row.get(DatasetKeys.PCT_CALOR_FRIO, 0) or 0
+                        p_lluvia  = row.get(DatasetKeys.PCT_LLUVIA_SEQUIA, 0) or 0
+                        p_ndvi    = row.get(DatasetKeys.PCT_VEGETACION, 0) or 0
+                        p_turismo = row.get(DatasetKeys.PCT_TURISMO, 0) or 0
+                        p_fiesta  = row.get(DatasetKeys.PCT_FIESTA, 0) or 0
+                        p_desc    = row.get(DatasetKeys.PCT_CAUSA_DESCONOCIDA, 0) or 0
+                        z_str = f"{z_val:.2f} σ" if pd.notna(z_val) else "—"
+                        return (
+                            f"<b>Nivel: {nivel_txt}</b>   Z = {z_str}<br>"
+                            f"─────────────────────────<br>"
+                            f"🌡️ Clima Temp.:    {p_calor:.1f}%<br>"
+                            f"🌧️ Clima Preci.:   {p_lluvia:.1f}%<br>"
+                            f"🌿 Vegetación:     {p_ndvi:.1f}%<br>"
+                            f"🏠 Turismo Ilegal: {p_turismo:.1f}%<br>"
+                            f"🎉 Festividades:   {p_fiesta:.1f}%<br>"
+                            f"❓ Causa Descon.:  {p_desc:.1f}%"
+                        )
+
+                    # 🔴 Exceso Grave (siempre en leyenda)
+                    mask_grave = col_nivel.isin(["1_EXCESO_Grave"])
+                    if mask_grave.any():
+                        hover_g = df_panel_temporal[mask_grave].apply(_build_hover, axis=1).tolist()
                         fig_panel.add_trace(go.Scatter(
-                            x=fechas_str[mask_alertas], y=val_real[mask_alertas],
-                            mode="markers", name="Anomalía Detectada",
-                            marker=dict(size=14, symbol="circle-open", line=dict(width=3, color="#e74c3c")),
-                            hoverinfo="skip"
+                            x=fechas_str[mask_grave], y=val_real[mask_grave],
+                            mode="markers", name="🔴 Grave",
+                            marker=dict(size=14, color="#e74c3c", symbol="circle",
+                                        line=dict(width=2, color="#fff")),
+                            hovertemplate="%{customdata}<extra></extra>",
+                            customdata=hover_g,
                         ))
-                
+                    else:
+                        fig_panel.add_trace(go.Scatter(
+                            x=[], y=[],
+                            mode="markers", name="🔴 Grave",
+                            marker=dict(size=14, color="#e74c3c", symbol="circle", line=dict(width=2, color="#fff")),
+                            showlegend=True,
+                        ))
+
+                    # 🟠 Exceso Leve / Moderado
+                    mask_leve = col_nivel.isin(["2_EXCESO_Moderado", "3_EXCESO_Leve"])
+                    if mask_leve.any():
+                        hover_l = df_panel_temporal[mask_leve].apply(_build_hover, axis=1).tolist()
+                        fig_panel.add_trace(go.Scatter(
+                            x=fechas_str[mask_leve], y=val_real[mask_leve],
+                            mode="markers", name="🟠 Leve/Mod",
+                            marker=dict(size=11, color="#f39c12", symbol="circle",
+                                        line=dict(width=2, color="#fff")),
+                            hovertemplate="%{customdata}<extra></extra>",
+                            customdata=hover_l,
+                        ))
+                    else:
+                        fig_panel.add_trace(go.Scatter(
+                            x=[], y=[],
+                            mode="markers", name="🟠 Leve/Mod",
+                            marker=dict(size=11, color="#f39c12", symbol="circle", line=dict(width=2, color="#fff")),
+                            showlegend=True,
+                        ))
+
+                    # 🔵 Defecto (consumo bajo)
+                    mask_def = col_nivel.isin(["4_DEFECTO_Grave", "5_DEFECTO_Moderado", "6_DEFECTO_Leve"])
+                    if mask_def.any():
+                        hover_d = df_panel_temporal[mask_def].apply(_build_hover, axis=1).tolist()
+                        fig_panel.add_trace(go.Scatter(
+                            x=fechas_str[mask_def], y=val_real[mask_def],
+                            mode="markers", name="🔵 Defecto",
+                            marker=dict(size=11, color="#3498db", symbol="circle",
+                                        line=dict(width=2, color="#fff")),
+                            hovertemplate="%{customdata}<extra></extra>",
+                            customdata=hover_d,
+                        ))
+                    else:
+                        fig_panel.add_trace(go.Scatter(
+                            x=[], y=[],
+                            mode="markers", name="🔵 Defecto",
+                            marker=dict(size=11, color="#3498db", symbol="circle", line=dict(width=2, color="#fff")),
+                            showlegend=True,
+                        ))
+
                 fig_panel.update_layout(
-                    template="plotly_dark", paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(255,255,255,0.02)",
+                    template="plotly_dark",
+                    paper_bgcolor="rgba(0,0,0,0)",
+                    plot_bgcolor="rgba(255,255,255,0.02)",
                     margin=dict(l=0, r=0, t=10, b=0),
                     xaxis=dict(gridcolor="rgba(255,255,255,0.05)", showgrid=True),
-                    yaxis=dict(gridcolor="rgba(255,255,255,0.05)", rangemode="tozero"),
-                    legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1, font=dict(size=11)),
-                    height=300, hovermode="x unified"
+                    yaxis=dict(
+                        title="Consumo (m³/cto)",
+                        gridcolor="rgba(255,255,255,0.05)",
+                        rangemode="tozero"
+                    ),
+                    legend=dict(
+                        orientation="v", yanchor="top", y=1,
+                        xanchor="left", x=1.02, font=dict(size=11)
+                    ),
+                    height=340,
+                    hovermode="closest",
                 )
-                
-                st.plotly_chart(fig_panel, width="stretch")
+
+                st.plotly_chart(fig_panel, use_container_width=True)
                 
                 # Desglose de anomalías con KPIs rápidos
                 if 'es_alerta' in df_panel_temporal.columns and df_panel_temporal['es_alerta'].any():

@@ -68,6 +68,7 @@ def render_map(df_barrio: pd.DataFrame, feature_col: str, gdf=None, alert_col: s
 
 def _add_choropleth(m, gdf, df_barrio, feature_col, alert_col) -> bool:
     """Añade capa Choropleth usando geometrías reales + datos. Retorna True si tuvo éxito."""
+    import json
     import branca.colormap as cm
 
     # Merge geometría + datos
@@ -139,8 +140,9 @@ def _add_choropleth(m, gdf, df_barrio, feature_col, alert_col) -> bool:
             gdf_merged[col] = 0.0
 
     # 2. ESCALADO ROBUSTO CONTRA OUTLIERS
-    vmin = gdf_merged[feature_col].quantile(0.05)
-    vmax = gdf_merged[feature_col].quantile(0.95)
+    # ── FIX: cast a float nativo — numpy.float64 rompe la serialización JSON de Jinja2/branca
+    vmin = float(gdf_merged[feature_col].quantile(0.05))
+    vmax = float(gdf_merged[feature_col].quantile(0.95))
     if vmin == vmax:
         vmin, vmax = vmin * 0.9, vmax * 1.1 + 1e-5
 
@@ -163,8 +165,11 @@ def _add_choropleth(m, gdf, df_barrio, feature_col, alert_col) -> bool:
         return {"weight": 3, "color": "#4cc9f0", "fillOpacity": 0.95}
 
     # 3. FIX HOVER Y SOLAPE: Se unifica el Tooltip y el Style en una sola capa
+    # ── FIX DEFINITIVO: to_json() serializa correctamente int64/float64 de numpy.
+    # __geo_interface__ reconstruye internamente los valores y bypasea las conversiones.
+    geojson_data = json.loads(gdf_merged.to_json())
     folium.GeoJson(
-        gdf_merged.__geo_interface__,
+        geojson_data,
         style_function=style_fn,
         highlight_function=highlight_fn,
         tooltip=folium.GeoJsonTooltip(
