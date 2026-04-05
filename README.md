@@ -62,9 +62,9 @@ INVICTUS utiliza un **modelo híbrido de física + machine learning** para deter
 
 ### El Modelo en 3 Frases
 
-1. **Base Física (Fourier):** Ajustamos una onda estacional de 2° orden por cada combinación `[Barrio × Uso]` para capturar el patrón natural de consumo — la "huella dactilar hídrica" de cada zona.
+1. **Base Física (Fourier):** Ajustamos una onda estacional de 2° orden por cada combinación `[Barrio × Uso]`, aplicando un **filtro de meses neutros** para aislar el patrón natural base sin la contaminación del sobreconsumo turístico — la "huella dactilar hídrica" pura de cada zona.
 
-2. **Impacto Exógeno (Random Forest):** El residuo entre lo que Fourier predice y el consumo real se modela con un RF que aprende el impacto de temperatura, lluvia, vegetación, turismo y festivos.
+2. **Impacto Exógeno (Random Forest):** El residuo entre lo que Fourier predice y el consumo real se modela con un RF que aprende el impacto de la temperatura, las precipitaciones, la vegetación, el **turismo por pernoctaciones (INE)** y el calendario de **festivos (incluyendo días puente)**.
 
 3. **Detección y Triaje:** La diferencia final (`consumo_real - consumo_esperado`) se convierte en un Z-Score que alimenta un **semáforo de 6 niveles** + atribución causal porcentual automática.
 
@@ -173,20 +173,21 @@ Visualización choropleth interactiva de Alicante con geometrías reales (GeoJSO
 <img src="docs/img/whatif.png" alt="Simulador What-If" width="55%">
 </div>
 
-Permite ajustar manualmente los valores de las 5 variables exógenas y visualizar en tiempo real:
+Impulsado por un avanzado **motor de inferencia no lineal**, el simulador permite ajustar los valores de las variables exógenas para observar su impacto re-escalado por Fourier, mientras utiliza la **distancia de Mahalanobis** para garantizar la validez física de los escenarios ingresados.
 
 | Variable | Rango | Descripción |
 |----------|-------|-------------|
-| 🌡️ Temperatura | -5 a 45 °C | Media mensual del barrio |
-| 🌧️ Precipitación | 0 a 300 mm | Acumulada mensual |
-| 🌿 NDVI | -1 a 1 | Índice de vegetación satelital |
-| 🏠 % VT sin registrar | 0 a 100% | Estimación de turismo ilegal |
-| 🎉 % Festivos | 0 a 50% | Proporción de días festivos |
+| 🌡️ Temperatura | Dinámico | Variación térmica respecto a la media |
+| 🌧️ Precipitación | Dinámico | Variación acumulada mensual |
+| 🌿 NDVI | Dinámico | Índice de vegetación satelital |
+| 🏖️ Turismo | Basado en INE | Estimación de pernoctaciones / turismo ilegal |
+| 🎉 Festivos | % mensual | Calendario oficial y días puente |
 
 **Salidas del simulador:**
-- **Gauge** del Z-Score simulado con semáforo de alerta
-- **Barras comparativas** (Base Fourier vs Simulación vs Real Histórico)
-- **Radar de sensibilidad** mostrando la contribución de cada feature
+- **Validación Mahalanobis:** Alerta interactiva ante combinaciones climáticas atípicas.
+- **Gauge** del Z-Score simulado con semáforo de alerta y riesgo.
+- **Barras comparativas** (Base Fourier vs Simulación vs Real Histórico).
+- **Radar de sensibilidad por cuantiles** mostrando la contribución y plausibilidad de cada feature.
 
 ### 🤖 Tab 3 — Informe LLM
 
