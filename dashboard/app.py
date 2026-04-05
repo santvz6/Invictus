@@ -384,10 +384,15 @@ with tab_mapa:
 
                 fechas_str = df_panel_temporal[DatasetKeys.FECHA].dt.strftime("%Y-%m")
 
-                # ── Banda verde de normalidad ±1.5σ ──────────────────────────────
-                sigma_consumo = val_real.std() if val_real.std() > 0 else 1.0
-                banda_sup = val_est + 1.5 * sigma_consumo
-                banda_inf = (val_est - 1.5 * sigma_consumo).clip(lower=0)
+                # ── Banda verde de normalidad ±1.5σ (Z-Score Sincronizado) ───────
+                error_calc = val_real - val_est
+                error_std = error_calc.std()
+                if pd.isna(error_std) or error_std == 0:
+                    error_std = 1.0
+                error_mean = error_calc.mean()
+
+                banda_sup = (val_est + error_mean) + (1.5 * error_std)
+                banda_inf = ((val_est + error_mean) - (1.5 * error_std)).clip(lower=0)
                 fig_panel.add_trace(go.Scatter(
                     x=pd.concat([fechas_str, fechas_str.iloc[::-1]]),
                     y=pd.concat([banda_sup, banda_inf.iloc[::-1]]),
