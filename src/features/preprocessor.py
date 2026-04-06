@@ -16,9 +16,11 @@ from src.features.aemet_processor import AEMETProcessor
 from src.features.amaem_processor import AMAEMProcessor
 from src.features.gva_processor import GVAProcessor
 from src.features.holiday_barrio_processor import HolidayBarrioProcessor
-from src.config import get_logger, DatasetKeys, Paths, FeatureConfig, FeatureScaling
 
-# Logger central del pipeline de características
+from src.config import (
+    get_logger, DatasetKeys, Paths, 
+    FeatureConfig, FeatureScaling
+)
 logger = get_logger(__name__)
 
 

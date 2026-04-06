@@ -6,12 +6,8 @@ de la estandarizaci√≥n de cabeceras, saneamiento de valores nulos y normalizaci√
 de tipos de datos para asegurar la consistencia en las etapas posteriores.
 """
 
-import numpy as np
 import pandas as pd
-
-from src.config import get_logger, DatasetKeys, Paths
-
-# Logger configurado para la trazabilidad de la ingesta inicial
+from src.config import DatasetKeys, Paths, get_logger
 logger = get_logger(__name__)
 
 class AMAEMProcessor:

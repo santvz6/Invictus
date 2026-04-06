@@ -7,9 +7,7 @@ información sobre la salud de la vegetación y su posible impacto en el consumo
 """
 
 import pandas as pd
-import logging
 from src.config import DatasetKeys, Paths, get_logger
-
 logger = get_logger(__name__)
 
 class SentinelProcessor:

@@ -11,9 +11,7 @@ import pandas as pd
 import streamlit as st
 import logging
 
-from src.config import DatasetKeys, AIConstants
-from src.utils.ollama_client import OllamaLLM
-
+from src.config import DatasetKeys, AIConstants, OllamaLLM
 logger = logging.getLogger(__name__)
 
 # Informe de ejemplo hardcodeado por barrio (mock)
@@ -27,8 +25,8 @@ El sistema Invictus ha procesado los patrones de consumo de agua de este barrio 
 **Anomalías Detectadas:**
 El desvío respecto al consumo físico esperado se sitúa dentro de los rangos normales para este perfil de barrio. No se han identificado violaciones graves de las restricciones físicas o climáticas.
 
-**Indicadores Turísticos:**
-Los datos de Viviendas Turísticas registradas (GVA) están en línea con el consumo hídrico observado. No se detecta un GAP significativo respecto a las estimaciones INE.
+**Indicadores Turísticos y Ambientales:**
+La presión turística real y los factores climáticos están en línea con el consumo hídrico observado.
 
 **Recomendación:**
 Continuar el seguimiento temporal. El modelo recomienda revisión periódica en los meses de mayor demanda estacional.
@@ -80,12 +78,13 @@ def _build_dynamic_prompt(barrio: str, df: pd.DataFrame) -> str:
     niveles_detectados = df_monthly.loc[df_monthly[DatasetKeys.ALERTA_NIVEL] != "Normal", DatasetKeys.ALERTA_NIVEL].unique() if DatasetKeys.ALERTA_NIVEL in df_monthly.columns else []
     niveles_str = ", ".join(niveles_detectados) if len(niveles_detectados) > 0 else "Ninguno"
     
-    vt_pct = df_b[DatasetKeys.PCT_VT_BARRIO_INE].mean() if DatasetKeys.PCT_VT_BARRIO_INE in df_b.columns else 0.0
-    
     # --- Variables de contexto extra ---
-    contratos_promedio = df_monthly[DatasetKeys.NUM_CONTRATOS].mean() if not df_monthly.empty else 0
     temp_media = df_b[DatasetKeys.TEMP_MEDIA].mean() if DatasetKeys.TEMP_MEDIA in df_b.columns else 0.0
-    ilegal_pct = df_b[DatasetKeys.PCT_VT_SIN_REGISTRAR].mean() if DatasetKeys.PCT_VT_SIN_REGISTRAR in df_b.columns else 0.0
+    precip_media = df_b[DatasetKeys.PRECIPITACION].mean() if DatasetKeys.PRECIPITACION in df_b.columns else 0.0
+    ndvi_medio = df_b[DatasetKeys.NDVI_SATELITE].mean() if DatasetKeys.NDVI_SATELITE in df_b.columns else 0.0
+    pernoct_media = df_b[DatasetKeys.PERNOCT_VT_PROV_INE].mean() if DatasetKeys.PERNOCT_VT_PROV_INE in df_b.columns else 0.0
+    dias_festivos = df_b[DatasetKeys.DIAS_FESTIVOS].sum() if DatasetKeys.DIAS_FESTIVOS in df_b.columns else 0
+    es_puente = df_b[DatasetKeys.ES_PUENTE].sum() if DatasetKeys.ES_PUENTE in df_b.columns else 0
     
     if esperado_col in df_monthly.columns:
         df_monthly["desvio_mensual"] = df_monthly[DatasetKeys.CONSUMO] - (df_monthly[esperado_col] * df_monthly[DatasetKeys.NUM_CONTRATOS])
@@ -97,18 +96,38 @@ def _build_dynamic_prompt(barrio: str, df: pd.DataFrame) -> str:
         idx_max = df_monthly["desvio_mensual"].idxmax()
         mes_pico = df_monthly.loc[idx_max, DatasetKeys.FECHA].strftime("%Y-%m")
     
-    contexto = (
-        f"**Rol**: Eres 'Invictus', un asistente experto de IA para el HACKATHON AMAEM DE DATOS.\n"
-        f"**Misión**: Redactar un reporte analítico que demuestre innovación al cruzar datos de telelectura con datos abiertos externos.\n\n"
-        f"**CONTEXTO TÉCNICO - BARRIO {barrio} ({fecha_inicio} a {fecha_fin})**:\n"
-        f"  - Contratos activos: {contratos_promedio:,.0f} | Clima medio: {temp_media:.1f}ºC\n"
-        f"  - Turismo Oficial: {vt_pct:.1f}% | Estimación Ilegales (Gap): {ilegal_pct:.1f}%\n"
-        f"  - Consumo Real: {consumo_real:,.0f} m3 | Físico Esperado: {consumo_esperado:,.0f} m3\n"
-        f"  - Desvío Total: {consumo_real - consumo_esperado:,.0f} m3 (Pico detectado en: {mes_pico})\n"
-        f"  - Alertas de Fraude Físico (Meses): {int(alertas)}\n"
-        f"  - Niveles de Alerta Detectados: {niveles_str}\n\n"
-        f"**Instrucciones**: NO inventes datos. Usa MÁXIMO 3 PÁRRAFOS en formato Markdown.\n"
-    )
+    contexto = f"""Eres el sistema analítico de INVICTUS.
+Analiza brevemente las anomalías hídricas del barrio {barrio} (periodo {fecha_inicio} a {fecha_fin}).
+Eres un LLM que corre en local, así que tus respuestas deben ser muy concisas y estructuradas.
+
+El modelo cruza:
+1. Base Física (Fourier)
+2. Impacto Exógeno (Random Forest): Clima, Nivel de Vegetación, Presión Turística (pernoctaciones reales) y Calendario (Festivos/Puentes).
+
+DATOS DE ENTRADA:
+- Consumo Real: {consumo_real:,.0f} m³
+- Consumo Físico Esperado (Fourier): {consumo_esperado:,.0f} m³
+- Mes con mayor desvío: {mes_pico}
+- Alertas: {alertas} ({niveles_str})
+- Temperatura Media: {temp_media:.1f} °C
+- Precipitación Media: {precip_media:.1f} mm
+- NDVI Satélite Medio: {ndvi_medio:.2f}
+- Pernoctaciones Turísticas (Media): {pernoct_media:,.0f}
+- Festivos en el periodo: {dias_festivos:.0f} (Días de puente: {es_puente:.0f})
+
+INSTRUCCIONES DE FORMATO PARA TU RESPUESTA:
+Actúa como un experto consultor en gestión del agua. Genera un reporte directo en formato Markdown usando esta estructura exacta (sin preámbulos):
+
+### 🚨 Estado Cualitativo
+(1 frase evaluando si la severidad de las alertas y el desvío mensual de consumo es preocupante o habitual).
+
+### 🔍 Análisis Causal
+(Un párrafo analizando qué variable generó la anomalía: ¿fue el clima, la presión turística real o los festivos? Menciona los datos de entrada provistos para justificarlo).
+
+### 🛡️ Recomendación Operativa
+(Una medida concreta y técnica de mitigación o monitoreo basada en la causa encontrada).
+
+REGLA ESTRICTA: Sé directo, profesional e incisivo. No uses más de 150 palabras en toda tu respuesta."""
     return contexto
 
 def render_llm_report(barrio: str | None = None, df: pd.DataFrame = None):
@@ -142,20 +161,20 @@ def render_llm_report(barrio: str | None = None, df: pd.DataFrame = None):
     # ── Botón de generación ─────────────────────────────────────────────
     btn_key = f"llm_btn_{barrio}"
     
-    if st.button(f"✨ Generar Informe para {barrio}", key=btn_key, type="primary"):
+    if st.button(f"Generar Informe para {barrio}", key=btn_key, type="primary"):
         st.session_state[f"llm_generated_{barrio}"] = False
         st.session_state[f"llm_response_{barrio}"] = None
         st.session_state[f"llm_is_mock_{barrio}"] = True
         st.session_state[f"llm_error_{barrio}"] = None
         
-        with st.spinner("🤖 Consultando modelo Qwen vía Ollama..."):
+        with st.spinner("Consultando modelo Qwen vía Ollama..."):
             # Inicializar cliente Ollama
             llm = OllamaLLM(model="qwen:7b", base_url="http://localhost:11434")
             
             # Verificar disponibilidad
             if not llm.health_check():
                 error_msg = (
-                    "⚠️ **Ollama no está disponible**\n\n"
+                    "**Ollama no está disponible**\n\n"
                     "Para usar esta función necesitas:\n"
                     "1. Descargar Ollama: https://ollama.ai\n"
                     "2. Ejecutar en terminal: `ollama pull qwen:7b`\n"
@@ -170,7 +189,7 @@ def render_llm_report(barrio: str | None = None, df: pd.DataFrame = None):
                     respuesta = llm.generate(prompt_text, stream=False, temperature=0.7)
                     st.session_state[f"llm_response_{barrio}"] = respuesta
                     st.session_state[f"llm_is_mock_{barrio}"] = False
-                    logger.info(f"✅ Informe generado exitosamente para {barrio}")
+                    logger.info(f"[OK] Informe generado exitosamente para {barrio}")
                 except Exception as e:
                     error_msg = f"Error conectando con Ollama: {str(e)}"
                     logger.error(error_msg)
@@ -191,7 +210,7 @@ def render_llm_report(barrio: str | None = None, df: pd.DataFrame = None):
             informe = _INFORMES_MOCK.get(barrio, _INFORMES_MOCK["DEFAULT"])
             
         if st.session_state.get(f"llm_is_mock_{barrio}"):
-            st.info("ℹ️ Mostrando reporte de respaldo. Para usar Qwen, inicia Ollama.")
+            st.info("Mostrando reporte de respaldo. Para usar Qwen, inicia Ollama.")
 
         st.markdown(
             f"""<div style="
@@ -210,7 +229,7 @@ def render_llm_report(barrio: str | None = None, df: pd.DataFrame = None):
 
         st.markdown("---")
         st.caption(
-            "⚠️ Este informe es generado por un LLM y puede contener imprecisiones. "
+            "Este informe es generado por un LLM y puede contener imprecisiones. "
             "Verificar siempre con los datos primarios antes de tomar decisiones."
         )
 
@@ -218,7 +237,7 @@ def render_llm_report(barrio: str | None = None, df: pd.DataFrame = None):
         st.markdown(
             """<div style="background:rgba(255,255,255,0.05); border:1px dashed rgba(255,255,255,0.2);
             border-radius:6px; padding:8px 12px; font-size:11px; color:#aaa; margin-top:8px;">
-            🔧 <b>Nota de Cumplimiento (Bases Hackathon):</b> Para respetar la Cláusula 13.1 (Confidencialidad) y 
+            <b>Nota de Cumplimiento (Bases Hackathon):</b> Para respetar la Cláusula 13.1 (Confidencialidad) y 
             la Cláusula 6.1 (Herramientas Gratuitas), este sistema está configurado para conectarse a una red 
             neuronal local (Ollama) en el puerto 11434, garantizando que <b>ningún dato de telelectura</b> 
             salga del entorno local.

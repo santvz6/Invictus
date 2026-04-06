@@ -66,7 +66,7 @@ FEATURES_WHATIF = [
         "max":    45.0,
         "step":   0.5,
         "help":   "Temperatura media mensual estimada para el período simulado.",
-        "icon":   "🌡️",
+        "icon":   "",
         "color":  "#f39c12",
     },
     {
@@ -77,7 +77,7 @@ FEATURES_WHATIF = [
         "max":    300.0,
         "step":   1.0,
         "help":   "Total de precipitación mensual acumulada.",
-        "icon":   "🌧️",
+        "icon":   "",
         "color":  "#4cc9f0",
     },
     {
@@ -88,7 +88,7 @@ FEATURES_WHATIF = [
         "max":    1.0,
         "step":   0.01,
         "help":   "Índice de vegetación normalizado (NDVI). Valores altos indican zonas verdes densas.",
-        "icon":   "🌿",
+        "icon":   "",
         "color":  "#52b788",
     },
     {
@@ -99,7 +99,7 @@ FEATURES_WHATIF = [
         "max":    200000.0,
         "step":   2500.0,
         "help":   "Noches ocupadas mensuales (Pernoctaciones) estimadas (INE).",
-        "icon":   "🏖️",
+        "icon":   "",
         "color":  "#e74c3c",
     },
     {
@@ -110,7 +110,7 @@ FEATURES_WHATIF = [
         "max":    12.0,
         "step":   1.0,
         "help":   "Número total de días festivos que caen en el mes simulado.",
-        "icon":   "🎉",
+        "icon":   "",
         "color":  "#9b59b6",
     },
 ]
@@ -491,13 +491,13 @@ def _get_alert_info(z: float) -> tuple[str, str, str]:
     az = abs(z)
     sign = "EXCESO" if z > 0 else "DEFECTO"
     if az > Z_GRAVE:
-        return f"{sign} GRAVE",  COLOR_GRAVE, "🔴"
+        return f"{sign} GRAVE",  COLOR_GRAVE, "●"
     elif az > Z_MOD:
-        return f"{sign} MODERADO", COLOR_MOD, "🟠"
+        return f"{sign} MODERADO", COLOR_MOD, "●"
     elif az > Z_LEVE:
-        return f"{sign} LEVE", COLOR_LEVE, "🟡"
+        return f"{sign} LEVE", COLOR_LEVE, "●"
     else:
-        return "NORMAL", COLOR_NORMAL, "🟢"
+        return "NORMAL", COLOR_NORMAL, "●"
 
 
 def _build_gauge(z_value: float, nivel: str, color: str) -> go.Figure:
@@ -774,16 +774,16 @@ def _render_plausibilidad(plaus: dict) -> None:
         return
 
     config = {
-        "plausible":  ("🟢", "#52b788", "Escenario Plausible",
+        "plausible":  ("●", "#52b788", "Escenario Plausible",
                        "La combinación de features es consistente con el histórico del barrio."),
-        "poco_comun": ("🟡", "#f39c12", "Escenario Poco Común",
+        "poco_comun": ("●", "#f39c12", "Escenario Poco Común",
                        f"Este escenario ocurre en menos del {100 - (pct or 90)}% de los períodos históricos."),
-        "atipico":    ("🟠", "#e67e22", "Escenario Atípico",
+        "atipico":    ("●", "#e67e22", "Escenario Atípico",
                        f"La combinación de variables es inusual (top {100 - (pct or 95)}% de rareza histórica)."),
-        "extremo":    ("🔴", "#e74c3c", "Escenario Extremo",
+        "extremo":    ("●", "#e74c3c", "Escenario Extremo",
                        "Esta combinación de features nunca se ha observado en el período analizado."),
     }
-    emoji, color, titulo, desc = config.get(nivel, ("⚪", "#888", "Sin datos", ""))
+    emoji, color, titulo, desc = config.get(nivel, ("●", "#888", "Sin datos", ""))
 
     dist_str = f" · Distancia Mahalanobis: {dist:.2f}" if dist is not None else ""
     st.markdown(
@@ -905,14 +905,14 @@ def render_whatif(df: pd.DataFrame, barrio: str | None = None) -> None:
 
         st.markdown("---")
         c1, c2 = st.columns(2)
-        if c1.button("↩ Restaurar", key="whatif_reset", type="secondary", use_container_width=True):
+        if c1.button("↩ Restaurar", key="whatif_reset", type="secondary", width='stretch'):
             # Limpiar todos los parámetros del simulador para este barrio (incluyendo cualquier mes cacheado)
             keys_to_del = [k for k in st.session_state.keys() if k.startswith("whatif_") and titulo_barrio in k]
             for k in keys_to_del:
                 del st.session_state[k]
             st.rerun()
 
-        if c2.button("📋 Ver betas", key="whatif_betas_toggle", type="secondary", use_container_width=True):
+        if c2.button("📋 Ver betas", key="whatif_betas_toggle", type="secondary", width='stretch'):
             st.session_state["whatif_show_betas"] = not st.session_state.get("whatif_show_betas", False)
 
         if st.session_state.get("whatif_show_betas", False):
@@ -929,7 +929,7 @@ def render_whatif(df: pd.DataFrame, barrio: str | None = None) -> None:
                 })
             if rows_b:
                 st.caption("Betas no-lineales del barrio (bajo/medio/alto percentil):")
-                st.dataframe(pd.DataFrame(rows_b), hide_index=True, use_container_width=True)
+                st.dataframe(pd.DataFrame(rows_b), hide_index=True, width='stretch')
 
     # ── Simulación ─────────────────────────────────────────────────────────────
     result    = engine.simulate(feature_values, mes_simulacion)
@@ -964,7 +964,7 @@ def render_whatif(df: pd.DataFrame, barrio: str | None = None) -> None:
 
         # Gauge
         fig_gauge = _build_gauge(z_sim, nivel, color_nivel)
-        st.plotly_chart(fig_gauge, use_container_width=True, key="gauge_whatif")
+        st.plotly_chart(fig_gauge, width='stretch', key="gauge_whatif")
 
         # Banner de alerta
         if abs(z_sim) > Z_LEVE:
@@ -1006,7 +1006,7 @@ def render_whatif(df: pd.DataFrame, barrio: str | None = None) -> None:
     st.markdown("##### Construcción del Consumo Simulado")
     st.caption("Cada feature suma o resta al valor base Fourier.")
     fig_wfall = _build_waterfall_chart(engine, result)
-    st.plotly_chart(fig_wfall, use_container_width=True, key="wfall_whatif")
+    st.plotly_chart(fig_wfall, width='stretch', key="wfall_whatif")
 
     # ── Perfil anual ──────────────────────────────────────────────────────────
     st.markdown("---")
@@ -1016,7 +1016,7 @@ def render_whatif(df: pd.DataFrame, barrio: str | None = None) -> None:
         f"{'Estrella = escenario simulado en ' + MESES_ES.get(mes_simulacion, '') if mes_simulacion else 'Selecciona un mes para anclar el escenario.'}"
     )
     fig_annual = _build_annual_profile(engine, consumo_sim, mes_simulacion)
-    st.plotly_chart(fig_annual, use_container_width=True, key="annual_whatif")
+    st.plotly_chart(fig_annual, width='stretch', key="annual_whatif")
 
     # ── Tabla de features ──────────────────────────────────────────────────────
     with st.expander("📋 Ver valores del escenario simulado vs. histórico"):
@@ -1044,7 +1044,7 @@ def render_whatif(df: pd.DataFrame, barrio: str | None = None) -> None:
         st.dataframe(
             pd.DataFrame(rows),
             hide_index=True,
-            use_container_width=True,
+            width='stretch',
         )
 
     # ── Nota metodológica ──────────────────────────────────────────────────────

@@ -7,11 +7,7 @@ evaluación de los estados de alta y baja administrativa de cada establecimiento
 """
 
 import pandas as pd
-import logging
-
 from src.config import DatasetKeys, Paths, get_logger
-
-# Configuración del logger para el seguimiento de la carga turística
 logger = get_logger(__name__)
 
 class GVAProcessor:

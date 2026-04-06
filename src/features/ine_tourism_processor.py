@@ -7,11 +7,7 @@ pernoctaciones, permitiendo modelar la presión turística tanto a nivel municip
 """
 
 import pandas as pd
-import numpy as np
-import logging
-
 from src.config import DatasetKeys, Paths, get_logger
-
 logger = get_logger(__name__)
 
 class INETourismProcessor:

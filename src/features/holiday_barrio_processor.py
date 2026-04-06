@@ -6,10 +6,7 @@ para enriquecer el dataset de consumo hídrico con variables de calendario local
 """
 
 import pandas as pd
-import logging
-
 from src.config import DatasetKeys, Paths, get_logger
-
 logger = get_logger(__name__)
 
 class HolidayBarrioProcessor:

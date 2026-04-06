@@ -6,11 +6,7 @@ de consumo hídrico con variables meteorológicas externas (temperatura y precip
 """
 
 import pandas as pd
-import logging
-
 from src.config import DatasetKeys, Paths, get_logger
-
-# Configuración del logger para seguimiento de procesos
 logger = get_logger(__name__)
 
 class AEMETProcessor:

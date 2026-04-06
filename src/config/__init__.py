@@ -9,3 +9,4 @@ from .logging import get_logger
 from .paths import Paths
 from .string_keys import DatasetKeys
 from .features import FeatureConfig, FeatureScaling
+from .ollama_client import OllamaLLM

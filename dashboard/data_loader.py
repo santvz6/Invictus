@@ -8,9 +8,6 @@ para que el dashboard sea funcional en todo momento.
 
 import sys
 import os
-import json
-import random
-from pathlib import Path
 
 import numpy as np
 import pandas as pd

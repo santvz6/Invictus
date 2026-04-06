@@ -9,8 +9,6 @@ turismo, etc.) sobre el residuo estacional.
 
 import numpy as np
 import pandas as pd
-import logging
-import scipy.stats as stats
 from scipy.optimize import curve_fit
 from sklearn.ensemble import RandomForestRegressor
 

@@ -2,7 +2,7 @@
 
 # 🌊 INVICTUS
 
-### *Water2Fraud — Detección Inteligente de Viviendas Turísticas Ilegales*
+### *Detección de Anomalías Hídricas y Atribución Causal Inteligente*
 
 [![Python](https://img.shields.io/badge/Python-3.13+-3776AB?style=for-the-badge&logo=python&logoColor=white)](https://python.org)
 [![Streamlit](https://img.shields.io/badge/Streamlit-Dashboard-FF4B4B?style=for-the-badge&logo=streamlit&logoColor=white)](https://streamlit.io)
@@ -13,9 +13,9 @@
 
 <br>
 
-> **¿Y si pudiéramos detectar pisos turísticos ilegales solo analizando el agua que consumen?**
+> **¿Y si pudiéramos entender y predecir anomalías de consumo solo analizando datos satelitales, climáticos y sociales?**
 >
-> INVICTUS cruza datos de facturación hídrica con clima, vegetación satelital, turismo oficial y calendario festivo para revelar patrones de consumo anómalos — la huella invisible del alquiler turístico clandestino.
+> INVICTUS cruza series temporales de facturación hídrica con clima, vegetación satelital, datos turísticos y calendario festivo para revelar patrones de consumo anómalos. Su modelo híbrido detecta desviaciones y realiza atribuciones causales (fugas, estacionalidad climática, turismo), ofreciendo visibilidad absoluta sobre la demanda de la ciudad.
 
 <br>
 
@@ -27,43 +27,20 @@
 
 ---
 
-## ⚡ Inicio Rápido
+## ⚡ Guía de Ejecución y Despliegue
 
-```bash
-# 1. Clonar e instalar
-git clone https://github.com/santvz6/Invictus.git
-cd Invictus
-python -m venv venv && source venv/bin/activate
-pip install -r requirements.txt
+Toda la información para instalar el proyecto, descargar las dependencias, ejecutar el pipeline de datos, lanzar el dashboard y configurar el modelo de inteligencia artificial se encuentra en:
 
-# 2. Ejecutar el pipeline de detección
-python main.py --run
+👉 **[Consulta la Guía de Ejecución (RUN.md)](./RUN.md)**
 
-# 3. Lanzar el dashboard
-./venv/bin/streamlit run dashboard/app.py
-```
-
-> [!NOTE]
-> El informe LLM requiere [Ollama](https://ollama.ai/) con el modelo **Qwen 7B**:
-> ```bash
-> # Windows (PowerShell):
-> .\setup_ollama.ps1
-> 
-> # O manualmente:
-> ollama pull qwen:7b
-> ollama serve
-> ```
-> Luego, el dashboard se conectará automáticamente a `http://localhost:11434`
+Para más detalles sobre la arquitectura IA utilizada:
+👉 **[Consulta la Documentación de Integración LLM (docs/LLM_INTEGRATION.md)](./docs/LLM_INTEGRATION.md)**
 
 ---
 
 ## 🧠 ¿Cómo funciona?
 
-INVICTUS utiliza un **modelo híbrido de física + machine learning** para determinar cuánta agua *debería* consumir cada barrio de Alicante, y detectar desviaciones sospechosas que podrían indicar actividad turística no declarada.
-
-<div align="center">
-<img src="docs/img/architecture.png" alt="Arquitectura INVICTUS" width="75%">
-</div>
+INVICTUS utiliza un **modelo híbrido de física + machine learning** para determinar cuánta agua *debería* consumir cada barrio de Alicante, y detectar desviaciones que podrían indicar problemas en la red, picos climáticos extremos, o variaciones demográficas no declaradas.
 
 ### El Modelo en 3 Frases
 
@@ -129,32 +106,32 @@ INVICTUS integra **6 fuentes de datos públicas** cruzadas geo-temporalmente a n
 
 ```
 Invictus/
-├── main.py                     # 🚀 Orquestador del pipeline
+├── main.py                             # 🚀 Orquestador del pipeline
 ├── src/
 │   ├── config/
-│   │   ├── features.py         # Ground Truth: variables + escalado
-│   │   ├── string_keys.py      # Diccionario centralizado de columnas
-│   │   ├── paths.py            # Rutas del proyecto (pathlib)
-│   │   ├── ai_constants.py     # Parámetros ML y LLM
-│   │   └── barrio_mapping.py   # Mapeo INE → Barrios AMAEM
+│   │   ├── features.py                 # Ground Truth: variables + escalado
+│   │   ├── string_keys.py              # Diccionario centralizado de columnas
+│   │   ├── paths.py                    # Rutas del proyecto (pathlib)
+│   │   ├── ai_constants.py             # Parámetros ML y LLM
+│   │   └── barrio_mapping.py           # Mapeo INE → Barrios AMAEM
 │   ├── features/
-│   │   ├── preprocessor.py     # 🧩 Orquestador de 6 procesadores
-│   │   ├── amaem_processor.py  # Ingesta agua (AMAEM)
-│   │   ├── ine_tourism_processor.py  # Turismo municipal (INE)
-│   │   ├── gva_processor.py    # Registro oficial VT (GVA)
-│   │   ├── aemet_processor.py  # Clima (AEMET)
-│   │   ├── sentinel_processor.py     # NDVI satelital (Sentinel-2)
-│   │   └── holiday_barrio_processor.py  # Festivos locales
-│   └── model.py                # 🔬 Motor Fourier + Random Forest
+│   │   ├── preprocessor.py             # 🧩 Orquestador de 6 procesadores
+│   │   ├── amaem_processor.py          # Ingesta agua (AMAEM)
+│   │   ├── ine_tourism_processor.py    # Turismo municipal (INE)
+│   │   ├── gva_processor.py            # Registro oficial VT (GVA)
+│   │   ├── aemet_processor.py          # Clima (AEMET)
+│   │   ├── sentinel_processor.py       # NDVI satelital (Sentinel-2)
+│   │   └── holiday_barrio_processor.py # Festivos locales
+│   └── model.py                        # 🔬 Motor Fourier + Random Forest
 ├── dashboard/
-│   ├── app.py                  # 🌐 Dashboard Streamlit principal
-│   ├── data_loader.py          # Carga y agregación de datos
+│   ├── app.py                          # 🌐 Dashboard Streamlit principal
+│   ├── data_loader.py                  # Carga y agregación de datos
 │   └── components/
-│       ├── map_view.py         # 🗺️ Mapa choropleth (Folium)
-│       ├── whatif_simulator.py # 🎛️ Simulador What-If
-│       └── llm_report.py       # 🤖 Informe LLM (Ollama/Qwen3)
-├── notebooks/                  # Análisis exploratorio
-├── internal/                   # Datos, experimentos, logs
+│       ├── map_view.py                 # 🗺️ Mapa choropleth (Folium)
+│       ├── whatif_simulator.py         # 🎛️ Simulador What-If
+│       └── llm_report.py               # 🤖 Informe LLM (Ollama/Qwen3)
+├── notebooks/                          # Análisis exploratorio
+├── internal/                           # Datos, experimentos, logs
 └── requirements.txt
 ```
 
@@ -162,41 +139,57 @@ Invictus/
 
 ## 📊 Dashboard Interactivo
 
-El dashboard está construido con **Streamlit** y ofrece tres módulos principales:
+El dashboard está construido con **Streamlit** y ofrece cuatro módulos principales:
 
-### 🗺️ Tab 1 — Mapa de Calor + Panel de Análisis Físico
+### 🗺️ Tab 1 — Mapa de Calor Interactivo
+
+<div align="center">
+<img src="docs/img/mapa_calor.png" alt="Mapa de Calor Interactivo" width="80%">
+</div>
 
 Visualización choropleth interactiva de Alicante con geometrías reales (GeoJSON). Al hacer clic en cualquier barrio se despliega:
 
 - **Serie temporal** del consumo real vs. estimado físico
 - **Marcadores de anomalía** sobre los puntos que exceden los umbrales de Z-Score
-- **Gráfico de atribución causal** (donut) que desglosa el % de cada factor exógeno en las alertas
+- **Gráfico de atribución causal** (donut) y trazabilidad de alertas
 
 ### 🎛️ Tab 2 — Simulador What-If
 
 <div align="center">
-<img src="docs/img/whatif.png" alt="Simulador What-If" width="55%">
+<img src="docs/img/whatif.png" alt="Simulador What-If" width="80%">
 </div>
 
 Impulsado por un avanzado **motor de inferencia no lineal**, el simulador permite ajustar los valores de las variables exógenas para observar su impacto re-escalado por Fourier, mientras utiliza la **distancia de Mahalanobis** para garantizar la validez física de los escenarios ingresados.
 
 | Variable | Rango | Descripción |
 |----------|-------|-------------|
-| 🌡️ Temperatura | Dinámico | Variación térmica respecto a la media |
-| 🌧️ Precipitación | Dinámico | Variación acumulada mensual |
-| 🌿 NDVI | Dinámico | Índice de vegetación satelital |
-| 🏖️ Turismo | Basado en INE | Estimación de pernoctaciones / turismo ilegal |
-| 🎉 Festivos | % mensual | Calendario oficial y días puente |
+| Temperatura | Dinámico | Variación térmica respecto a la media |
+| Precipitación | Dinámico | Variación acumulada mensual |
+| NDVI | Dinámico | Índice de vegetación satelital |
+| Turismo | Basado en INE | Estimación de pernoctaciones / ocupaciones |
+| Festivos | % mensual | Calendario oficial y días puente |
 
 **Salidas del simulador:**
 - **Validación Mahalanobis:** Alerta interactiva ante combinaciones climáticas atípicas.
 - **Gauge** del Z-Score simulado con semáforo de alerta y riesgo.
 - **Barras comparativas** (Base Fourier vs Simulación vs Real Histórico).
-- **Radar de sensibilidad por cuantiles** mostrando la contribución y plausibilidad de cada feature.
+- **Radar de desviación temporal** mostrando la contribución y plausibilidad de cada feature.
 
 ### 🤖 Tab 3 — Informe LLM
 
-Genera un análisis cualitativo del barrio seleccionado utilizando **Qwen3** vía Ollama, alimentado con las métricas reales del modelo físico como contexto.
+<div align="center">
+<img src="docs/img/informe_llm.png" alt="Informe LLM" width="80%">
+</div>
+
+Genera un análisis cualitativo del barrio seleccionado utilizando **Qwen local** vía Ollama, alimentado con las métricas reales del modelo físico como contexto para la toma de decisiones, operando off-grid para respetar la confidencialidad.
+
+### ⚖️ Tab 4 — Auditoría de Bases
+
+<div align="center">
+<img src="docs/img/auditoria.png" alt="Auditoría de Bases" width="80%">
+</div>
+
+Panel de **Certificación de Cumplimiento** que detalla cómo el proyecto INVICTUS se alinea con las Bases de Participación del Hackathon, detallando originalidad, impacto esperado, implementación y prevención antifraude.
 
 ---
 
