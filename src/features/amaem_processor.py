@@ -55,8 +55,12 @@ class AMAEMProcessor:
 
         # Limpieza de strings numéricos (ej: '1,000' -> 1000)
         for key in [DatasetKeys.CONSUMO, DatasetKeys.NUM_CONTRATOS]:
-            if df[key].dtype == 'object':
-                df[key] = df[key].str.replace(",", "").astype(int)
+            cleaned_strings = df[key].astype(str).str.replace(",", "")
+            df[key] = pd.to_numeric(cleaned_strings, errors='coerce')
+        
+        # Como errors='coerce' puede haber generado nuevos NaNs si había texto sucio, 
+        # limpiamos para evitar que la división o cálculos posteriores fallen.
+        df = df.dropna(subset=[DatasetKeys.CONSUMO, DatasetKeys.NUM_CONTRATOS])
         
         # Ingeniería de características base: Consumo promedio por unidad alojativa/contrato
         df[DatasetKeys.CONSUMO_RATIO] = df[DatasetKeys.CONSUMO] / df[DatasetKeys.NUM_CONTRATOS]

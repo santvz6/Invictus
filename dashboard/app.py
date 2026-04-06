@@ -29,7 +29,6 @@ json.JSONEncoder.default = _numpy_safe_default
 # ─────────────────────────────────────────────────────────────────────────────
 
 # ── Configuración de pandas y ruta para src/ ──────────────────────────────
-pd.set_option('future.no_silent_downcasting', True)
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
 from src.config import DatasetKeys
