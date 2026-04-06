@@ -44,11 +44,16 @@ python main.py --run
 ```
 
 > [!NOTE]
-> El informe LLM requiere [Ollama](https://ollama.com/) con el modelo `qwen3`:
+> El informe LLM requiere [Ollama](https://ollama.ai/) con el modelo **Qwen 7B**:
 > ```bash
-> curl -fsSL https://ollama.com/install.sh | sh
-> ollama run qwen3
+> # Windows (PowerShell):
+> .\setup_ollama.ps1
+> 
+> # O manualmente:
+> ollama pull qwen:7b
+> ollama serve
 > ```
+> Luego, el dashboard se conectará automáticamente a `http://localhost:11434`
 
 ---
 

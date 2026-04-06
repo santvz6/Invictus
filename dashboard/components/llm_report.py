@@ -9,8 +9,12 @@ import time
 import requests
 import pandas as pd
 import streamlit as st
+import logging
 
 from src.config import DatasetKeys, AIConstants
+from src.utils.ollama_client import OllamaLLM
+
+logger = logging.getLogger(__name__)
 
 # Informe de ejemplo hardcodeado por barrio (mock)
 _INFORMES_MOCK = {
@@ -142,35 +146,52 @@ def render_llm_report(barrio: str | None = None, df: pd.DataFrame = None):
         st.session_state[f"llm_generated_{barrio}"] = False
         st.session_state[f"llm_response_{barrio}"] = None
         st.session_state[f"llm_is_mock_{barrio}"] = True
+        st.session_state[f"llm_error_{barrio}"] = None
         
-        with st.spinner("Consultando modelo de lenguaje..."):
-            # Intentamos conectar a una instancia de Ollama (Local) para cumplir con las Normas del Hackathon
-            # (Confidencialidad de los datos y herramientas Gratuitas / Open Source)
-            try:
-                response = requests.post(
-                    "http://127.0.0.1:11434/api/generate",
-                    json={"model": AIConstants.LLM_MODEL, "prompt": prompt_text, "stream": False},
-                    timeout=90
+        with st.spinner("🤖 Consultando modelo Qwen vía Ollama..."):
+            # Inicializar cliente Ollama
+            llm = OllamaLLM(model="qwen:7b", base_url="http://localhost:11434")
+            
+            # Verificar disponibilidad
+            if not llm.health_check():
+                error_msg = (
+                    "⚠️ **Ollama no está disponible**\n\n"
+                    "Para usar esta función necesitas:\n"
+                    "1. Descargar Ollama: https://ollama.ai\n"
+                    "2. Ejecutar en terminal: `ollama pull qwen:7b`\n"
+                    "3. Iniciar el servidor: `ollama serve`\n\n"
+                    "Mientras tanto, mostrando reporte de respaldo..."
                 )
-                if response.status_code == 200:
-                    st.session_state[f"llm_response_{barrio}"] = response.json().get("response", "")
+                st.session_state[f"llm_error_{barrio}"] = error_msg
+                st.session_state[f"llm_is_mock_{barrio}"] = True
+            else:
+                try:
+                    # Generar usando Ollama
+                    respuesta = llm.generate(prompt_text, stream=False, temperature=0.7)
+                    st.session_state[f"llm_response_{barrio}"] = respuesta
                     st.session_state[f"llm_is_mock_{barrio}"] = False
-            except Exception as e:
-                # Fallback silencioso si no hay servidor local, evitamos romper el flujo
-                print(f"[OLLAMA ERROR] No se pudo generar el reporte para {barrio}: {e}")
-                time.sleep(1.5)
-                pass
+                    logger.info(f"✅ Informe generado exitosamente para {barrio}")
+                except Exception as e:
+                    error_msg = f"Error conectando con Ollama: {str(e)}"
+                    logger.error(error_msg)
+                    st.session_state[f"llm_error_{barrio}"] = error_msg
+                    st.session_state[f"llm_is_mock_{barrio}"] = True
                 
         st.session_state[f"llm_generated_{barrio}"] = True
 
     # ── Mostrar informe ─────────────────────────────────────────────────
     if st.session_state.get(f"llm_generated_{barrio}", False):
+        # Verificar si hay error
+        error_msg = st.session_state.get(f"llm_error_{barrio}")
+        if error_msg:
+            st.error(error_msg)
+        
         informe = st.session_state.get(f"llm_response_{barrio}")
         if not informe:
             informe = _INFORMES_MOCK.get(barrio, _INFORMES_MOCK["DEFAULT"])
             
         if st.session_state.get(f"llm_is_mock_{barrio}"):
-            st.warning("⚠️ Servidor IA local no detectado. Mostrando reporte de respaldo sintético.")
+            st.info("ℹ️ Mostrando reporte de respaldo. Para usar Qwen, inicia Ollama.")
 
         st.markdown(
             f"""<div style="

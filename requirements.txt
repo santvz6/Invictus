@@ -47,3 +47,10 @@ branca
 # --- Dashboard e Interfaz de Usuario ---
 streamlit
 streamlit-folium
+
+# --- Cliente HTTP para integraciones externas ---
+requests
+
+# --- LLM Local (Ollama) ---
+# Requiere: ollama pull qwen:7b
+# Ejecutar: ollama serve
