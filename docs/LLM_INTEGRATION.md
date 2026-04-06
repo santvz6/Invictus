@@ -1,21 +1,21 @@
-# 🤖 Integración del LLM (Ollama + Qwen) en INVICTUS
+# Integración del LLM (Ollama + Qwen) en INVICTUS
 
 Este documento explica la arquitectura, archivos y justificación técnica detrás de la integración de Inteligencia Artificial Generativa en el proyecto. 
 
 ---
 
-## 🎯 Por Qué Ollama
+## Por Qué Ollama
 Debido a la naturaleza de los datos utilizados (datos demográficos, facturación de agua) era crucial un enfoque centrado en la **Privacidad de los Datos (100% Local)**, con el fin de evitar que los datos viajen a APIs en la nube. Ollama nos permite incrustar modelos de código abierto sin esfuerzo de manera rápida, asegurando que cumple con los requerimientos necesarios.
 
 ---
 
-## 📦 Archivos Involucrados y Arquitectura
+## Archivos Involucrados y Arquitectura
 
 ### 1. `src/utils/ollama_client.py` 
 Es el cliente Python especializado para comunicarse con el servidor local Ollama.
-- ✅ *Health Check*: Verifica disponibilidad antes de efectuar llamadas.
-- ✅ *Manejo de Errores*: Intercepta fallos de LLM de manera fluida.
-- ✅ *Text Generation*: Soporta generación simple, streaming e incorporación de contexto.
+- **Health Check**: Verifica disponibilidad antes de efectuar llamadas.
+- **Manejo de Errores**: Intercepta fallos de LLM de manera fluida.
+- **Text Generation**: Soporta generación simple, streaming e incorporación de contexto.
 
 ### 2. `dashboard/components/llm_report.py`
 El panel visual en la Tab 3 de Streamlit:
@@ -37,7 +37,7 @@ LLM_TEMPERATURE = 0.7
 
 ---
 
-## 📊 Diagrama de Ingesta y Generación
+## Diagrama de Ingesta y Generación
 
 ```text
 ┌────────────────────────────────────────────────────────────┐
@@ -58,7 +58,7 @@ LLM_TEMPERATURE = 0.7
 
 ---
 
-## ⚙️ Modelos Soportados y Alternativas
+## Modelos Soportados y Alternativas
 El sistema viene preparado por defecto con **Qwen 7B** por ser un balance excepcional entre calidad analítica y costo de RAM (~4.7GB). 
 Si se cuenta con recursos muy limitados u hardware de servidores diferente, pueden modificarse fácilmente:
 

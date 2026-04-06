@@ -8,8 +8,8 @@
 [![Streamlit](https://img.shields.io/badge/Streamlit-Dashboard-FF4B4B?style=for-the-badge&logo=streamlit&logoColor=white)](https://streamlit.io)
 [![Fourier](https://img.shields.io/badge/Fourier-Series-4cc9f0?style=for-the-badge&logo=scipy&logoColor=white)](https://scipy.org)
 [![Random Forest](https://img.shields.io/badge/Random%20Forest-Scikit--Learn-f39c12?style=for-the-badge&logo=scikit-learn&logoColor=white)](https://scikit-learn.org)
-[![Sentinel-2](https://img.shields.io/badge/Sentinel--2-NDVI-52b788?style=for-the-badge&logo=satellite&logoColor=white)](#)
-[![License](https://img.shields.io/badge/Hackathon-2026-e74c3c?style=for-the-badge)](#)
+[![Sentinel-2](https://img.shields.io/badge/Sentinel--2-NDVI-52b788?style=for-the-badge&logo=satellite&logoColor=white)](https://apps.sentinel-hub.com/eo-browser/)
+[![License](https://img.shields.io/badge/Hackathon-2026-e74c3c?style=for-the-badge)](.bases.pdf)
 
 <br>
 
@@ -27,18 +27,18 @@
 
 ---
 
-## ⚡ Guía de Ejecución y Despliegue
+## Guía de Ejecución y Despliegue
 
 Toda la información para instalar el proyecto, descargar las dependencias, ejecutar el pipeline de datos, lanzar el dashboard y configurar el modelo de inteligencia artificial se encuentra en:
 
-👉 **[Consulta la Guía de Ejecución (RUN.md)](./RUN.md)**
+👉 **[Consulta la Guía de Ejecución (RUN.md)](./docs/RUN.md)**
 
 Para más detalles sobre la arquitectura IA utilizada:
 👉 **[Consulta la Documentación de Integración LLM (docs/LLM_INTEGRATION.md)](./docs/LLM_INTEGRATION.md)**
 
 ---
 
-## 🧠 ¿Cómo funciona?
+## ¿Cómo funciona?
 
 INVICTUS utiliza un **modelo híbrido de física + machine learning** para determinar cuánta agua *debería* consumir cada barrio de Alicante, y detectar desviaciones que podrían indicar problemas en la red, picos climáticos extremos, o variaciones demográficas no declaradas.
 
@@ -53,7 +53,7 @@ INVICTUS utiliza un **modelo híbrido de física + machine learning** para deter
 <br>
 
 <details>
-<summary><b>📐 Formulación Matemática</b></summary>
+<summary><b>Formulación Matemática</b></summary>
 
 <br>
 
@@ -84,7 +84,7 @@ $$Z = \frac{C_{real}(t) - \hat{C}(t)}{\sigma_{grupo}}$$
 
 ---
 
-## 🗂️ Fuentes de Datos
+## Fuentes de Datos
 
 INVICTUS integra **6 fuentes de datos públicas** cruzadas geo-temporalmente a nivel de barrio y mes (2022–2024):
 
@@ -102,11 +102,12 @@ INVICTUS integra **6 fuentes de datos públicas** cruzadas geo-temporalmente a n
 
 ---
 
-## 🏗️ Arquitectura del Proyecto
+## Arquitectura del Proyecto
 
 ```
 Invictus/
 ├── main.py                             # 🚀 Orquestador del pipeline
+├── Invictus_Pipeline_Final.ipynb       # 📊 Pipeline Final
 ├── src/
 │   ├── config/
 │   │   ├── features.py                 # Ground Truth: variables + escalado
@@ -137,11 +138,11 @@ Invictus/
 
 ---
 
-## 📊 Dashboard Interactivo
+## Dashboard Interactivo
 
 El dashboard está construido con **Streamlit** y ofrece cuatro módulos principales:
 
-### 🗺️ Tab 1 — Mapa de Calor Interactivo
+### Tab 1 — Mapa de Calor Interactivo
 
 <div align="center">
 <img src="docs/img/mapa_calor.png" alt="Mapa de Calor Interactivo" width="80%">
@@ -153,7 +154,7 @@ Visualización choropleth interactiva de Alicante con geometrías reales (GeoJSO
 - **Marcadores de anomalía** sobre los puntos que exceden los umbrales de Z-Score
 - **Gráfico de atribución causal** (donut) y trazabilidad de alertas
 
-### 🎛️ Tab 2 — Simulador What-If
+### Tab 2 — Simulador What-If
 
 <div align="center">
 <img src="docs/img/whatif.png" alt="Simulador What-If" width="80%">
@@ -175,7 +176,7 @@ Impulsado por un avanzado **motor de inferencia no lineal**, el simulador permit
 - **Barras comparativas** (Base Fourier vs Simulación vs Real Histórico).
 - **Radar de desviación temporal** mostrando la contribución y plausibilidad de cada feature.
 
-### 🤖 Tab 3 — Informe LLM
+### Tab 3 — Informe LLM
 
 <div align="center">
 <img src="docs/img/informe_llm.png" alt="Informe LLM" width="80%">
@@ -183,7 +184,7 @@ Impulsado por un avanzado **motor de inferencia no lineal**, el simulador permit
 
 Genera un análisis cualitativo del barrio seleccionado utilizando **Qwen local** vía Ollama, alimentado con las métricas reales del modelo físico como contexto para la toma de decisiones, operando off-grid para respetar la confidencialidad.
 
-### ⚖️ Tab 4 — Auditoría de Bases
+### Tab 4 — Auditoría de Bases
 
 <div align="center">
 <img src="docs/img/auditoria.png" alt="Auditoría de Bases" width="80%">
@@ -193,7 +194,7 @@ Panel de **Certificación de Cumplimiento** que detalla cómo el proyecto INVICT
 
 ---
 
-## 🔬 Pipeline de Procesamiento
+## Pipeline de Procesamiento
 
 El pipeline se ejecuta con un solo comando y procesa los datos en 5 fases secuenciales:
 
@@ -216,7 +217,7 @@ Cada fase genera un **checkpoint CSV** intermedio en `internal/processed/` para 
 
 ---
 
-## 🛡️ Prevención de Data Leakage
+## Prevención de Data Leakage
 
 > [!CAUTION]
 > Para garantizar la validez científica de los resultados, INVICTUS implementa una estricta separación temporal:
@@ -227,7 +228,7 @@ Cada fase genera un **checkpoint CSV** intermedio en `internal/processed/` para 
 
 ---
 
-## 📚 Fuentes y Referencias
+## Fuentes y Referencias
 
 Para una consulta técnica detallada y descarga de citaciones en formato BibTeX, consulta el archivo [references.bib](./references.bib).
 

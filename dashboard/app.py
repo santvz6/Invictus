@@ -47,7 +47,7 @@ from dashboard.components.llm_report       import render_llm_report
 # CONFIGURACIÓN DE LA PÁGINA
 # ════════════════════════════════════════════════════════════════════════════
 st.set_page_config(
-    page_title="INVICTUS — Dashboard Fraude Turístico",
+    page_title="INVICTUS — Dashboard de Anomalías Hídricas",
     page_icon="🌊",
     layout="wide",
     initial_sidebar_state="expanded",
@@ -129,7 +129,7 @@ hr { border-color: rgba(76,201,240,0.2) !important; }
 # ════════════════════════════════════════════════════════════════════════════
 # CARGA DE DATOS (cacheada)
 # ════════════════════════════════════════════════════════════════════════════
-with st.spinner("Cargando datos del pipeline Water2Fraud..."):
+with st.spinner("Cargando datos del pipeline INVICTUS..."):
     df_full = load_dataframe()
     gdf     = load_geodataframe()
 
@@ -149,7 +149,7 @@ with st.sidebar:
     <div style="text-align:center; padding: 10px 0 20px;">
         <div style="font-size:40px;">🌊</div>
         <div style="font-size:20px; font-weight:700; color:#4cc9f0;">INVICTUS</div>
-        <div style="font-size:11px; color:#888; margin-top:2px;">Water2Fraud · Detector Turístico</div>
+        <div style="font-size:11px; color:#888; margin-top:2px;">INVICTUS · Atribución Causal</div>
     </div>
     """, unsafe_allow_html=True)
 
@@ -265,10 +265,10 @@ df_barrio_agg = aggregate_by_barrio(df_filtered)
 st.markdown("""
 <div style="padding: 10px 0 20px;">
     <h1 style="margin:0; font-size:28px; color:#4cc9f0;">
-        INVICTUS — Dashboard de Detección de Fraude Turístico
+        INVICTUS — Dashboard de Anomalías Hídricas y Atribución Causal
     </h1>
     <p style="color:#888; font-size:13px; margin-top:4px;">
-        Detección de viviendas turísticas ilegales en Alicante · Análisis Físico y Estadístico
+        Detección de anomalías y presión turística en Alicante · Análisis Físico y Estadístico
     </p>
 </div>
 """, unsafe_allow_html=True)
@@ -617,7 +617,7 @@ with tab_mapa:
                     Selecciona un Sector
                 </div>
                 <div style="font-size: 14px; color: #aaa; line-height: 1.5;">
-                    Haz clic en cualquier área del mapa interactivo situado a la izquierda para visualizar el estado de consumo físico de un barrio, la trazabilidad de sus anomalías y el diagnóstico de los motores de fraude turístico.
+                    Haz clic en cualquier área del mapa interactivo situado a la izquierda para visualizar el estado de consumo físico de un barrio, la trazabilidad de sus anomalías y el diagnóstico de los motores de atribución causal.
                 </div>
             </div>
             """, unsafe_allow_html=True)
@@ -648,16 +648,16 @@ with tab_auditoria:
     with c1:
         st.info("#### 1. Originalidad e Innovación (20%)")
         st.markdown("""
-        - **Uso no convencional:** Cruce de micro-telelectura con **Gap de Ilegalidad** (INE vs Registro GVA).
+        - **Uso no convencional:** Cruce de micro-telelectura con **Gap de Presión Turística** (INE vs Registro GVA).
         - **Modelo Híbrido:** Combinación de series de **Fourier de 2º orden** (física pura) con Random Forest.
         - **Detección Causal:** Atribución automática del % de culpabilidad al clima vs. turismo.
         """)
 
         st.success("#### 3. Impacto Social/Ambiental (30%)")
         st.markdown("""
-        - **Crisis de Vivienda:** Herramienta directa para la lucha contra la gentrificación y el alquiler ilegal.
+        - **Crisis de Vivienda:** Herramienta directa para el análisis de presión turística y sostenibilidad.
         - **Sostenibilidad:** Identificación de sobreconsumos masivos no residenciales en red doméstica.
-        - **Transparencia:** Democratización del dato de fraude hacia los gestores municipales.
+        - **Transparencia:** Democratización del dato de anomalías hacia los gestores municipales.
         """)
 
     with c2:

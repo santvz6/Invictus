@@ -26,7 +26,7 @@ logger = get_logger(__name__)
 
 class WaterPreprocessor:
     """
-    Orquestador global de transformación de datos para detección de fraude.
+    Orquestador global de transformación de datos para detección de anomalías.
     
     Centraliza la configuración de variables predictoras, su normalización estocástica 
     y la generación de ventanas deslizantes (sliding windows) para el aprendizaje temporal.
@@ -80,7 +80,7 @@ class WaterPreprocessor:
     @staticmethod
     def _INE_GVA_gap(df: pd.DataFrame) -> pd.DataFrame:
         """
-        Ejecuta lógica de ingeniería de características complejas basada en el 'Gap' de legalidad.
+        Ejecuta lógica de ingeniería de características complejas basada en el 'Gap' de presión turística.
         
         Calcula la discrepancia entre el turismo reportado (INE) y el registrado (GVA), 
         distribuyendo pesos municipales hacia el detalle de barrio.
@@ -112,7 +112,7 @@ class WaterPreprocessor:
             if col in df.columns:
                 df[col] = (df[col] * df['pct_barrio']).round(2)
 
-        # 5. ESTIMACIÓN DE ILEGALIDAD:
+        # 5. ESTIMACIÓN DE TURISMO NO DECLARADO:
         # Delta entre el total estimado por INE y el registro oficial de la GVA ponderado.
         # Un valor positivo indica presencia probable de pisos turísticos no declarados.
         df[DatasetKeys.NUM_VT_SIN_REGISTRAR] = (df[DatasetKeys.NUM_VT_BARRIO_INE] - df[DatasetKeys.NUM_VT_BARRIO_GVA]).clip(lower=0)
@@ -171,7 +171,7 @@ class WaterPreprocessor:
         # Fase F: Añadir features estacionales binarias
         df_not_scaled = WaterPreprocessor._add_seasonal_features(df_not_scaled)
 
-        # Fase E: Ingeniería de Variables de Fraude (Gap de Ilegalidad)
+        # Fase E: Ingeniería de Variables de Presión (Gap de Propagación)
         df_not_scaled = WaterPreprocessor._INE_GVA_gap(df_not_scaled)
 
         # Fase E: Normalización para Deep Learning

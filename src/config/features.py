@@ -40,7 +40,7 @@ class FeatureConfig:
         DatasetKeys.NDVI_SATELITE: FeatureScaling.MIN_MAX,
 
         # TURISMO - Presión Turística Real (INE/Provincial) [MEJORA 1]
-        # Se eliminó PCT_VT_SIN_REGISTRAR (medía ilegalidad fiscal, no presión sobre consumo)
+        # Se eliminó PCT_VT_SIN_REGISTRAR (medía diferencial de oferta, no presión sobre consumo)
         DatasetKeys.OCUP_VT_PROV_INE:     FeatureScaling.MIN_MAX,   # Alojamientos turísticos ocupados
         DatasetKeys.PERNOCT_VT_PROV_INE:  FeatureScaling.ROBUST,    # Noches ocupadas (presión real)
 
@@ -63,7 +63,7 @@ class FeatureConfig:
         DatasetKeys.TEMP_MEDIA:           DatasetKeys.PCT_CALOR_FRIO,
         DatasetKeys.PRECIPITACION:        DatasetKeys.PCT_LLUVIA_SEQUIA,
         DatasetKeys.NDVI_SATELITE:        DatasetKeys.PCT_VEGETACION,
-        # Turismo real (presión sobre consumo, no fraude fiscal)
+        # Turismo real (presión sobre consumo, no diferencial administrativo)
         DatasetKeys.OCUP_VT_PROV_INE:    DatasetKeys.PCT_TURISMO,
         DatasetKeys.PERNOCT_VT_PROV_INE: DatasetKeys.PCT_TURISMO,
         DatasetKeys.VERANO:              DatasetKeys.PCT_TURISMO,    # Presión vacacional

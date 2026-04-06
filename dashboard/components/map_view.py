@@ -335,7 +335,7 @@ def _add_legend(m, feature_col: str, series: pd.Series):
                         border-radius:3px;"></div>
             <span style="font-size:10px;">{hi:.1f}</span>
         </div>
-        <div style="margin-top:6px; font-size:10px; color:#c1121f;">Alerta turística</div>
+        <div style="margin-top:6px; font-size:10px; color:#c1121f;">Alerta de Consumo</div>
         <div style="font-size:10px; color:#52b788;">Sin alerta</div>
     </div>
     """
