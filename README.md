@@ -31,10 +31,10 @@
 
 Toda la información para instalar el proyecto, descargar las dependencias, ejecutar el pipeline de datos, lanzar el dashboard y configurar el modelo de inteligencia artificial se encuentra en:
 
-👉 **[Consulta la Guía de Ejecución (RUN.md)](./docs/RUN.md)**
+👉 **[Consulta la Guía de Ejecución](./docs/RUN.md)**
 
 Para más detalles sobre la arquitectura IA utilizada:
-👉 **[Consulta la Documentación de Integración LLM (docs/LLM_INTEGRATION.md)](./docs/LLM_INTEGRATION.md)**
+👉 **[Consulta la Documentación de Integración LLM](./docs/LLM_INTEGRATION.md)**
 
 ---
 
