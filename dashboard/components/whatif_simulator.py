@@ -92,24 +92,24 @@ FEATURES_WHATIF = [
         "color":  "#52b788",
     },
     {
-        "label":  "% VT sin registrar",
-        "col":    DatasetKeys.PCT_VT_SIN_REGISTRAR,
-        "unit":   "%",
+        "label":  "Pernoctaciones Turísticas",
+        "col":    DatasetKeys.PERNOCT_VT_PROV_INE,
+        "unit":   "noches/mes",
         "min":    0.0,
-        "max":    100.0,
-        "step":   0.5,
-        "help":   "Porcentaje estimado de viviendas turísticas que operan sin estar registradas en el sector.",
-        "icon":   "🏠",
+        "max":    200000.0,
+        "step":   2500.0,
+        "help":   "Noches ocupadas mensuales (Pernoctaciones) estimadas (INE).",
+        "icon":   "🏖️",
         "color":  "#e74c3c",
     },
     {
-        "label":  "% Días Festivos en el Mes",
-        "col":    DatasetKeys.PCT_FESTIVOS,
-        "unit":   "%",
+        "label":  "Días Festivos en el Mes",
+        "col":    DatasetKeys.DIAS_FESTIVOS,
+        "unit":   "días",
         "min":    0.0,
-        "max":    50.0,
-        "step":   0.5,
-        "help":   "Porcentaje de días del mes clasificados como festivos o puentes.",
+        "max":    12.0,
+        "step":   1.0,
+        "help":   "Número total de días festivos que caen en el mes simulado.",
         "icon":   "🎉",
         "color":  "#9b59b6",
     },
@@ -179,6 +179,11 @@ class WhatIfEngine:
 
         # ── Medias y std de cada feature ─────────────────────────────────────
         self.feat_stats: dict[str, dict] = {}
+        if DatasetKeys.FECHA in df.columns:
+            df["_mes_m"] = pd.to_datetime(df[DatasetKeys.FECHA], errors="coerce").dt.month
+        else:
+            df["_mes_m"] = 1
+
         for f in FEATURES_WHATIF:
             col = f["col"]
             if col not in df.columns:
@@ -186,8 +191,12 @@ class WhatIfEngine:
             x = df[col].dropna()
             if len(x) < 3:
                 continue
+                
+            m_means = df.groupby("_mes_m")[col].mean().to_dict()
+            
             self.feat_stats[col] = {
                 "mean": float(x.mean()),
+                "monthly_means": m_means,
                 "std":  float(x.std()) if float(x.std()) > 0 else 1.0,
                 "q33":  float(x.quantile(0.33)),
                 "q66":  float(x.quantile(0.66)),
@@ -298,8 +307,14 @@ class WhatIfEngine:
 
     # ── API pública ───────────────────────────────────────────────────────────
 
-    def get_feat_means(self) -> dict[str, float]:
-        return {col: stats["mean"] for col, stats in self.feat_stats.items()}
+    def get_feat_means(self, mes: int | None = None) -> dict[str, float]:
+        res = {}
+        for col, stats in self.feat_stats.items():
+            if mes is not None and "monthly_means" in stats and mes in stats["monthly_means"]:
+                res[col] = float(stats["monthly_means"][mes])
+            else:
+                res[col] = float(stats["mean"])
+        return res
 
     def get_feat_stats(self) -> dict[str, dict]:
         return self.feat_stats
@@ -345,7 +360,12 @@ class WhatIfEngine:
             stats = self.feat_stats.get(col, {})
             q33 = stats.get("q33", stats.get("mean", 0))
             q66 = stats.get("q66", stats.get("mean", 0))
-            mu_x = stats.get("mean", 0.0)
+            
+            # ── Centrado dinámico según mes para el cálculo de impacto ────────
+            if mes_simulacion is not None and "monthly_means" in stats and mes_simulacion in stats["monthly_means"]:
+                mu_x = float(stats["monthly_means"][mes_simulacion])
+            else:
+                mu_x = float(stats.get("mean", 0.0))
 
             val = feature_values.get(col, mu_x)
 
@@ -377,7 +397,7 @@ class WhatIfEngine:
         z_sim = delta_scaled / self.sigma_residuo if self.sigma_residuo > 0 else 0.0
 
         # ── Score de plausibilidad (Mahalanobis) ─────────────────────────────
-        plausibilidad = self._score_plausibilidad(feature_values)
+        plausibilidad = self._score_plausibilidad(feature_values, mes_simulacion)
 
         return {
             "consumo_sim":       consumo_sim,
@@ -390,12 +410,26 @@ class WhatIfEngine:
             "plausibilidad":     plausibilidad,
         }
 
-    def _score_plausibilidad(self, feature_values: dict[str, float]) -> dict:
-        """Retorna nivel de plausibilidad del escenario según distancia de Mahalanobis."""
+    def _score_plausibilidad(self, feature_values: dict[str, float], mes_simulacion: int | None = None) -> dict:
+        """Retorna nivel de plausibilidad evaluando la anomalía transpuesta a la distribución global."""
         if not self._mah_cols or self._mah_VI is None:
             return {"nivel": "sin_datos", "percentil": None, "distancia": None}
 
-        punto = np.array([feature_values.get(c, self._mah_mu[i]) for i, c in enumerate(self._mah_cols)])
+        punto_eval = []
+        for i, c in enumerate(self._mah_cols):
+            val_sim = feature_values.get(c, self._mah_mu[i])
+            if mes_simulacion is not None and c in self.feat_stats and "monthly_means" in self.feat_stats[c]:
+                mu_x_mes = float(self.feat_stats[c]["monthly_means"].get(mes_simulacion, self._mah_mu[i]))
+            else:
+                mu_x_mes = float(self.feat_stats.get(c, {}).get("mean", self._mah_mu[i]))
+            
+            # Traslación inteligente: Calculamos la anomalía respecto a la normalidad del mes,
+            # y se la aplicamos a la media anual. Evaluamos la excentricidad de la *anomalía*, no del valor bruto.
+            anomalia = val_sim - mu_x_mes
+            val_eval = self._mah_mu[i] + anomalia
+            punto_eval.append(val_eval)
+
+        punto = np.array(punto_eval)
         dist = float(mahalanobis(punto, self._mah_mu, self._mah_VI))
 
         if self._mah_dist_pct is not None:
@@ -803,7 +837,17 @@ def render_whatif(df: pd.DataFrame, barrio: str | None = None) -> None:
 
     # ── Motor (cacheado por barrio) ───────────────────────────────────────────
     engine = _get_engine(df, barrio)
-    feat_means = engine.get_feat_means()
+    
+    # Extraer pre-calculo del mes directamente de session_state para iniciar los sliders al mes correcto
+    mes_str = st.session_state.get(f"whatif_mes_{titulo_barrio}", "📅 Media anual")
+    mes_activo = None
+    if mes_str != "📅 Media anual":
+        try:
+            mes_activo = int(mes_str.split("(")[1].rstrip(")"))
+        except Exception:
+            pass
+            
+    feat_means = engine.get_feat_means(mes_activo)
 
     # ── Layout: sliders izquierda | resultados derecha ────────────────────────
     col_sliders, col_results = st.columns([1, 1.4], gap="large")
@@ -838,7 +882,8 @@ def render_whatif(df: pd.DataFrame, barrio: str | None = None) -> None:
             default = round(mu_x / f["step"]) * f["step"]
             default = float(np.clip(default, f["min"], f["max"]))
 
-            key_din = f"whatif_{col}_{titulo_barrio}"
+            # Añadimos el mes al key para que los sliders adopten el valor por defecto del nuevo mes
+            key_din = f"whatif_{col}_{titulo_barrio}_{mes_sel_label}"
 
             st.markdown(
                 f"""<div style="font-size:13px; color:#ccc; margin-bottom:2px;">
@@ -861,13 +906,10 @@ def render_whatif(df: pd.DataFrame, barrio: str | None = None) -> None:
         st.markdown("---")
         c1, c2 = st.columns(2)
         if c1.button("↩ Restaurar", key="whatif_reset", type="secondary", use_container_width=True):
-            for f in FEATURES_WHATIF:
-                k = f"whatif_{f['col']}_{titulo_barrio}"
-                if k in st.session_state:
-                    del st.session_state[k]
-            k_mes = f"whatif_mes_{titulo_barrio}"
-            if k_mes in st.session_state:
-                del st.session_state[k_mes]
+            # Limpiar todos los parámetros del simulador para este barrio (incluyendo cualquier mes cacheado)
+            keys_to_del = [k for k in st.session_state.keys() if k.startswith("whatif_") and titulo_barrio in k]
+            for k in keys_to_del:
+                del st.session_state[k]
             st.rerun()
 
         if c2.button("📋 Ver betas", key="whatif_betas_toggle", type="secondary", use_container_width=True):
