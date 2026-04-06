@@ -13,4 +13,4 @@ class AIConstants:
     LLM_MODEL = "qwen3"
 
     # Percentiles para definir el corte de anomalías (Riesgo de Fraude)
-    FRAUD_RISK_PERCENTILE   = 90
+    FRAUD_RISK_PERCENTILE = 90
