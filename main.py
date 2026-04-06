@@ -15,8 +15,8 @@ logger = get_logger(__name__)
 
 class WaterApp:
     """
-    Orquestador del pipeline físico 'Water2Fraud'.
-    Se enfoca en modelado de Fourier e impacto de factores exógenos (Random Forest).
+    Orquestador del pipeline físico 'INVICTUS'.
+    Se enfoca en modelado de Fourier e impacto de factores exógenos (Random Forest) para la detección de anomalías.
     """
 
     @staticmethod

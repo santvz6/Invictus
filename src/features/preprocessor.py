@@ -114,7 +114,7 @@ class WaterPreprocessor:
 
         # 5. ESTIMACIÓN DE TURISMO NO DECLARADO:
         # Delta entre el total estimado por INE y el registro oficial de la GVA ponderado.
-        # Un valor positivo indica presencia probable de pisos turísticos no declarados.
+        # Un valor positivo indica presencia probable de presión turística no declarada.
         df[DatasetKeys.NUM_VT_SIN_REGISTRAR] = (df[DatasetKeys.NUM_VT_BARRIO_INE] - df[DatasetKeys.NUM_VT_BARRIO_GVA]).clip(lower=0)
         
         # Normalización por densidad de contratos

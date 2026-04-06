@@ -98,7 +98,7 @@ INVICTUS integra **6 fuentes de datos públicas** cruzadas geo-temporalmente a n
 | 📅 **Festivos** | Ayto. Alicante | Días festivos, % festivos/mes | Barrio × Mes |
 
 > [!IMPORTANT]
-> La detección del **"Gap de Ilegalidad"** se calcula como la diferencia entre las viviendas turísticas estimadas por el INE y las oficialmente registradas en la GVA, distribuida proporcionalmente por barrio.
+> La detección del **"Gap de Turismo No Declarado"** se calcula como la diferencia entre las viviendas turísticas estimadas por el INE y las oficialmente registradas en la GVA, distribuida proporcionalmente por barrio.
 
 ---
 
@@ -190,7 +190,7 @@ Genera un análisis cualitativo del barrio seleccionado utilizando **Qwen local*
 <img src="docs/img/auditoria.png" alt="Auditoría de Bases" width="80%">
 </div>
 
-Panel de **Certificación de Cumplimiento** que detalla cómo el proyecto INVICTUS se alinea con las Bases de Participación del Hackathon, detallando originalidad, impacto esperado, implementación y prevención antifraude.
+Panel de **Certificación de Cumplimiento** que detalla cómo el proyecto INVICTUS se alinea con las Bases de Participación del Hackathon, detallando originalidad, impacto esperado, implementación y detección de anomalías.
 
 ---
 
@@ -204,7 +204,7 @@ graph LR
     B --> C[Fase B<br>Turismo INE+GVA]
     C --> D[Fase C<br>Clima+Satélite]
     D --> E[Fase D<br>Festivos]
-    E --> F[Fase E<br>Gap Ilegalidad]
+    E --> F[Fase E<br>Gap Turismo No Declarado]
     F --> G[🔬 Fourier + RF]
     G --> H[📊 Dashboard]
     

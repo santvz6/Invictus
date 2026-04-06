@@ -210,14 +210,14 @@ class ModeloFisico:
 
     @staticmethod
     def _finalize_fisicos(df: pd.DataFrame, rf_model: RandomForestRegressor, X_full: pd.DataFrame) -> pd.DataFrame:
-        """Combina componentes y genera los residuos finales para la detección de fraude y porcentajes de causa vía SHAP."""
+        """Combina componentes y genera los residuos finales para la detección de anomalías e influencia de causas exógenas mediante SHAP."""
         import shap
         
         # Híbrido: Base Física + Impacto de Contexto
         df[DatasetKeys.CONSUMO_FISICO_ESPERADO] = df[DatasetKeys.PREDICCION_FOURIER] + df[DatasetKeys.IMPACTO_EXOGENO]
         
         # Residuo Final: Diferencia entre consumo real y lo que la 'física' y el 'contexto' dictan
-        # Un residuo positivo elevado es un fuerte indicador de posible fraude/fuga
+        # Un residuo positivo elevado es un fuerte indicador de posible consumo anómalo o fuga
         df[DatasetKeys.RESIDUO] = df[DatasetKeys.CONSUMO_RATIO] - df[DatasetKeys.CONSUMO_FISICO_ESPERADO]
         
         # Función auxiliar para cálculo robusto de Z-Score evitando avisos de división por cero
