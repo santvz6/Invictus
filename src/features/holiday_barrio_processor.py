@@ -53,7 +53,15 @@ class HolidayBarrioProcessor:
 
     @staticmethod
     def _prepare_base_dataframe(df: pd.DataFrame) -> pd.DataFrame:
-        """Prepara el dataset de AMAEM creando el anclaje mensual para el cruce."""
+        """
+        Prepara el dataset de AMAEM creando el anclaje mensual para el cruce.
+
+        Args:
+            df (pd.DataFrame): Dataset base de AMAEM.
+
+        Returns:
+            pd.DataFrame: Dataset con columna 'fecha_cruce_mensual' (Period M).
+        """
         df_final = df.copy()
         df_final[DatasetKeys.FECHA] = pd.to_datetime(df_final[DatasetKeys.FECHA])
         df_final['fecha_cruce_mensual'] = df_final[DatasetKeys.FECHA].dt.to_period('M')
@@ -61,7 +69,12 @@ class HolidayBarrioProcessor:
 
     @staticmethod
     def _load_and_clean_festivos_data() -> pd.DataFrame | None:
-        """Carga la fuente externa y normaliza cabeceras."""
+        """
+        Carga la fuente externa de festivos y normaliza sus cabeceras.
+
+        Returns:
+            pd.DataFrame | None: DataFrame con datos de festivos o None si no se encuentra el archivo.
+        """
         ruta_festivos = Paths.RAW_CSV_FESTIVOS
         try:
             df_festivos = pd.read_csv(ruta_festivos)
@@ -88,7 +101,15 @@ class HolidayBarrioProcessor:
 
     @staticmethod
     def _add_temporal_anchor(df_festivos: pd.DataFrame) -> pd.DataFrame:
-        """Genera el anclaje temporal en los datos de festivos."""
+        """
+        Genera el anclaje temporal (Period M) en los datos de festivos.
+
+        Args:
+            df_festivos (pd.DataFrame): Dataset crudo de festivos.
+
+        Returns:
+            pd.DataFrame: Dataset con ancla temporal unificada.
+        """
         if DatasetKeys.FECHA in df_festivos.columns:
             # La fecha viene como YYYY/MM en el CSV
             df_festivos['fecha_cruce_mensual'] = pd.to_datetime(df_festivos[DatasetKeys.FECHA], format='%Y/%m').dt.to_period('M')
@@ -97,7 +118,16 @@ class HolidayBarrioProcessor:
 
     @staticmethod
     def _execute_merge(df_final: pd.DataFrame, df_festivos: pd.DataFrame) -> pd.DataFrame:
-        """Realiza la integración de datos."""
+        """
+        Realiza la integración (merge) de los datos de festivos por barrio.
+
+        Args:
+            df_final (pd.DataFrame): Dataset base.
+            df_festivos (pd.DataFrame): Dataset de festivos procesado.
+
+        Returns:
+            pd.DataFrame: Dataset integrado.
+        """
         if DatasetKeys.BARRIO in df_festivos.columns:
             df_festivos[DatasetKeys.BARRIO] = df_festivos[DatasetKeys.BARRIO].astype(str).str.upper()
             df_final[DatasetKeys.BARRIO] = df_final[DatasetKeys.BARRIO].astype(str).str.upper()
@@ -111,7 +141,15 @@ class HolidayBarrioProcessor:
 
     @staticmethod
     def _finalize_data(df_final: pd.DataFrame) -> pd.DataFrame:
-        """Limpia columnas técnicas, imputa nulos, añade ES_PUENTE y persiste el punto de control."""
+        """
+        Limpia columnas técnicas, imputa nulos y añade indicadores de puente.
+
+        Args:
+            df_final (pd.DataFrame): Dataset enriquecido.
+
+        Returns:
+            pd.DataFrame: Dataset finalizado para el siguiente paso.
+        """
         df_final = df_final.drop(columns=['fecha_cruce_mensual'])
 
         cols_festivos = [DatasetKeys.DIAS_FESTIVOS, DatasetKeys.PCT_FESTIVOS]

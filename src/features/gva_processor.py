@@ -56,7 +56,15 @@ class GVAProcessor:
 
     @staticmethod
     def _prepare_base_dataframe(df: pd.DataFrame) -> pd.DataFrame:
-        """Sincroniza el formato de fecha y genera el ancla mensual para el cruce."""
+        """
+        Sincroniza el formato de fecha y genera el ancla mensual para el cruce.
+
+        Args:
+            df (pd.DataFrame): Dataset base de AMAEM.
+
+        Returns:
+            pd.DataFrame: Dataset con columna 'fecha_cruce_mensual' (Period M).
+        """
         df_final = df.copy()
         df_final[DatasetKeys.FECHA] = pd.to_datetime(df_final[DatasetKeys.FECHA])
         df_final['fecha_cruce_mensual'] = df_final[DatasetKeys.FECHA].dt.to_period('M')
@@ -64,7 +72,15 @@ class GVAProcessor:
 
     @staticmethod
     def _get_tourist_activity(meses_unicos: pd.Index) -> tuple[pd.DataFrame, pd.DataFrame]:
-        """Orquesta el procesamiento individual de cada fuente de datos de la GVA."""
+        """
+        Orquesta el procesamiento individual de cada fuente de datos de la GVA.
+
+        Args:
+            meses_unicos (pd.Index): Lista de periodos mensuales a evaluar.
+
+        Returns:
+            tuple[pd.DataFrame, pd.DataFrame]: (DF Viviendas Turísticas, DF Hoteles).
+        """
         # Procesamiento de Viviendas Turísticas (VT)
         df_vt = GVAProcessor._process_gva_source(
             filepath=Paths.GVA_VIVIENDAS, 
@@ -87,6 +103,14 @@ class GVAProcessor:
         
         A diferencia de otros procesadores, este evalúa cada registro unitario contra 
         todos los meses del histórico para determinar su vigencia funcional.
+
+        Args:
+            filepath (Path/str): Ruta al CSV de la GVA.
+            meses_unicos (pd.Index): Periodos temporales de análisis.
+            prefix (str): Prefijo para las columnas resultantes (viviendas/hoteles).
+
+        Returns:
+            pd.DataFrame: Series temporales de oferta para la categoría especificada.
         """
         try:
             # Lectura con codificación específica para caracteres regionales
@@ -141,7 +165,17 @@ class GVAProcessor:
 
     @staticmethod
     def _merge_tourist_data(df_final: pd.DataFrame, df_vt: pd.DataFrame, df_hoteles: pd.DataFrame) -> pd.DataFrame:
-        """Integra las series temporales de oferta turística en el dataset principal."""
+        """
+        Integra las series temporales de oferta turística en el dataset principal.
+
+        Args:
+            df_final (pd.DataFrame): Dataset base.
+            df_vt (pd.DataFrame): Datos procesados de viviendas.
+            df_hoteles (pd.DataFrame): Datos procesados de hoteles.
+
+        Returns:
+            pd.DataFrame: Dataset con columnas integradas y renombradas.
+        """
         # Integración de Viviendas Turísticas
         if not df_vt.empty:
             df_vt = df_vt.rename(columns={
@@ -168,7 +202,15 @@ class GVAProcessor:
 
     @staticmethod
     def _finalize_gva(df_final: pd.DataFrame) -> pd.DataFrame:
-        """Limpia variables temporales, gestiona nulos y guarda el histórico intermedio."""
+        """
+        Limpia variables temporales, gestiona nulos y guarda el histórico intermedio.
+
+        Args:
+            df_final (pd.DataFrame): Dataset enriquecido.
+
+        Returns:
+            pd.DataFrame: Dataset finalizado para el siguiente paso del pipeline.
+        """
         cols_gva = [
             DatasetKeys.NUM_VT_BARRIO_GVA, 
             DatasetKeys.PLAZAS_VIVIENDAS_GVA, 

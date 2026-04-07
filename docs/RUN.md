@@ -4,10 +4,30 @@ Esta guía detalla los pasos multiplataforma (Windows, Ubuntu/Linux, macOS) para
 
 ---
 
+## 0. Estructura de Datos (Muy Importante)
+
+Para que el pipeline funcione correctamente, los archivos de datos crudos deben colocarse en la siguiente estructura de directorios:
+
+```text
+Invictus/
+├── internal/
+│   └── data/           <-- Los datos crudos deben ir aquí
+│       ├── amaem/
+│       ├── aemet/
+│       ├── ine/
+│       └── ...
+└── ...
+```
+
+> [!IMPORTANT]
+> La carpeta `data/` con todos los datasets debe situarse **dentro** de la carpeta `internal/`. Si la carpeta `internal/` no existe, el pipeline la creará automáticamente al iniciarse, pero los datos deben ser movidos manualmente a su interior antes de la ejecución completa o descargados allí.
+
+---
+
 ## 1. Instalación y Entorno Base
 
 ### Requisitos Previos:
-- **Python 3.13+** instalado.
+- **Python 3.13.12** instalado.
 - **Git** instalado.
 
 ### Pasos de Instalación:

@@ -36,6 +36,12 @@ class WaterPreprocessor:
 
     @staticmethod
     def _load_data() -> pd.DataFrame:
+        """
+        Carga los datos brutos de consumo de AMAEM desde la ruta centralizada de configuración.
+        
+        Returns:
+            pd.DataFrame: Dataset original con registros de lectura hídrica.
+        """
         input_path = Paths.RAW_CSV_AMAEM
         if not input_path.exists():
             logger.error(f"Error crítico: No se encuentra el archivo en {input_path}")
@@ -112,9 +118,9 @@ class WaterPreprocessor:
             if col in df.columns:
                 df[col] = (df[col] * df['pct_barrio']).round(2)
 
-        # 5. ESTIMACIÓN DE TURISMO NO DECLARADO:
+        # 5. ESTIMACIÓN DE ANOMALÍAS DE PRESIÓN:
         # Delta entre el total estimado por INE y el registro oficial de la GVA ponderado.
-        # Un valor positivo indica presencia probable de presión turística no declarada.
+        # Un valor positivo indica presencia probable de presión anómala de consumo.
         df[DatasetKeys.NUM_VT_SIN_REGISTRAR] = (df[DatasetKeys.NUM_VT_BARRIO_INE] - df[DatasetKeys.NUM_VT_BARRIO_GVA]).clip(lower=0)
         
         # Normalización por densidad de contratos
@@ -142,15 +148,28 @@ class WaterPreprocessor:
 
     @staticmethod
     def _save_processed_df(df_not_scaled: pd.DataFrame, df_scaled: pd.DataFrame) -> None:
-        """Centraliza la persistencia de los diferentes estados del dataset."""
+        """
+        Versionaliza y persiste el estado final de los datos procesados.
+        
+        Args:
+            df_not_scaled (pd.DataFrame): Dataset con ingeniería de características pero sin normalizar.
+            df_scaled (pd.DataFrame): Dataset final normalizado listo para el motor de aprendizaje profundo.
+        """
         df_not_scaled.to_csv(Paths.PROC_CSV_AMAEM_NOT_SCALED, index=False)
         df_scaled.to_csv(Paths.PROC_CSV_AMAEM_SCALED, index=False)
     
 
     @staticmethod
-    def process_all_data() -> tuple[pd.DataFrame, dict]:
+    def process_all_data() -> tuple[pd.DataFrame, pd.DataFrame, dict]:
         """
-        ...
+        Ejecuta el pipeline completo de transformación e integración geo-temporal.
+        
+        Coordina de forma secuencial la ingesta base, el enriquecimiento con fuentes 
+        externas (AEMET, INE, Sentinel, GVA, Festivos) y la ingeniería de variables 
+        avanzada para la detección de anomalías.
+        
+        Returns:
+            tuple: Contiene (df_scaled, df_not_scaled, scalers).
         """
         df_not_scaled = WaterPreprocessor._load_data()
         

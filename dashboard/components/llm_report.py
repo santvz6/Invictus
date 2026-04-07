@@ -35,7 +35,16 @@ Continuar el seguimiento temporal. El modelo recomienda revisión periódica en 
 
 
 def _build_dynamic_prompt(barrio: str, df: pd.DataFrame) -> str:
-    """Extrae las métricas reales del DataFrame para construir el prompt."""
+    """
+    Construye el prompt analítico enriquecido con datos reales para el LLM.
+
+    Args:
+        barrio (str): Nombre del barrio a analizar.
+        df (pd.DataFrame): Dataset filtrado con el contexto histórico y actual.
+
+    Returns:
+        str: Prompt estructurado listo para ser enviado a la API de inferencia.
+    """
     if df is None or df.empty:
         return f"Analiza las anomalías del barrio {barrio}. Sin embargo, no hay datos disponibles en este momento."
 
@@ -132,12 +141,11 @@ REGLA ESTRICTA: Sé directo, profesional e incisivo. No uses más de 150 palabra
 
 def render_llm_report(barrio: str | None = None, df: pd.DataFrame = None):
     """
-    Renderiza el panel de informe LLM.
+    Renderiza la interfaz del informe de hallazgos IA en el dashboard.
 
-    Parameters
-    ----------
-    barrio : str | None — Barrio seleccionado en el mapa
-    df : pd.DataFrame | None — Datos filtrados para generar contexto
+    Args:
+        barrio (str, optional): Nombre del barrio seleccionado.
+        df (pd.DataFrame, optional): Datos filtrados para el contexto del informe.
     """
     st.markdown("### Informe de Hallazgos IA")
     st.markdown(

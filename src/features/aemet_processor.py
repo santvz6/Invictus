@@ -56,7 +56,15 @@ class AEMETProcessor:
 
     @staticmethod
     def _prepare_base_dataframe(df: pd.DataFrame) -> pd.DataFrame:
-        """Prepara el dataset de AMAEM creando el anclaje mensual para el cruce."""
+        """
+        Prepara el dataset de AMAEM creando el anclaje mensual para el cruce.
+
+        Args:
+            df (pd.DataFrame): Dataset base de AMAEM.
+
+        Returns:
+            pd.DataFrame: Dataset con columna 'fecha_cruce_mensual' (Period M).
+        """
         df_final = df.copy()
         df_final[DatasetKeys.FECHA] = pd.to_datetime(df_final[DatasetKeys.FECHA])
         df_final['fecha_cruce_mensual'] = df_final[DatasetKeys.FECHA].dt.to_period('M')
@@ -64,7 +72,12 @@ class AEMETProcessor:
 
     @staticmethod
     def _load_and_clean_aemet_data() -> pd.DataFrame | None:
-        """Carga la fuente externa, normaliza cabeceras y ajusta tipos de datos."""
+        """
+        Carga la fuente externa de AEMET, normaliza cabeceras y ajusta tipos.
+
+        Returns:
+            pd.DataFrame | None: Dataset climático o None si no se encuentra el archivo.
+        """
         ruta_aemet = Paths.AEMET_CLIMA_BARRIOS
         try:
             df_aemet = pd.read_csv(ruta_aemet)
@@ -91,7 +104,15 @@ class AEMETProcessor:
 
     @staticmethod
     def _add_temporal_anchor(df_aemet: pd.DataFrame) -> pd.DataFrame:
-        """Genera el anclaje temporal en los datos de AEMET usando la clave de fecha."""
+        """
+        Genera el anclaje temporal (Period M) en los datos de AEMET.
+
+        Args:
+            df_aemet (pd.DataFrame): Dataset de AEMET con claves de fecha.
+
+        Returns:
+            pd.DataFrame: Dataset con ancla temporal configurada.
+        """
         if DatasetKeys.FECHA in df_aemet.columns:
             df_aemet[DatasetKeys.FECHA] = pd.to_datetime(df_aemet[DatasetKeys.FECHA])
             df_aemet['fecha_cruce_mensual'] = df_aemet[DatasetKeys.FECHA].dt.to_period('M')
@@ -102,7 +123,16 @@ class AEMETProcessor:
 
     @staticmethod
     def _execute_merge(df_final: pd.DataFrame, df_aemet: pd.DataFrame) -> pd.DataFrame:
-        """Realiza la integración de datos con lógica de fallback si falta el barrio."""
+        """
+        Realiza la integración de datos climáticos con el dataset principal.
+
+        Args:
+            df_final (pd.DataFrame): Dataset base enriquecido parcialmente.
+            df_aemet (pd.DataFrame): Datos climáticos procesados.
+
+        Returns:
+            pd.DataFrame: Dataset integrado.
+        """
         if DatasetKeys.BARRIO in df_aemet.columns:
             df_aemet[DatasetKeys.BARRIO] = df_aemet[DatasetKeys.BARRIO].astype(str).str.upper()
             df_final = pd.merge(
@@ -118,7 +148,15 @@ class AEMETProcessor:
 
     @staticmethod
     def _finalize_data(df_final: pd.DataFrame) -> pd.DataFrame:
-        """Limpia columnas técnicas, imputa nulos y persiste el punto de control."""
+        """
+        Limpia columnas técnicas, imputa nulos y persiste el punto de control.
+
+        Args:
+            df_final (pd.DataFrame): Dataset enriquecido.
+
+        Returns:
+            pd.DataFrame: Dataset finalizado para el siguiente paso del pipeline.
+        """
         df_final = df_final.drop(columns=['fecha_cruce_mensual'])
 
         cols_clima = [DatasetKeys.TEMP_MEDIA, DatasetKeys.PRECIPITACION] 

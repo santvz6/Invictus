@@ -1,3 +1,10 @@
+"""
+string_keys.py
+--------------
+Definición centralizada de las claves (nombres de columnas) de los datasets.
+Garantiza que no haya discrepancias de nombrado entre el preprocesador y el dashboard.
+"""
+
 class DatasetKeys:
     """
     Diccionario centralizado de nombres de columnas (keys) utilizadas en los DataFrames.

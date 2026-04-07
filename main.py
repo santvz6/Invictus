@@ -1,7 +1,14 @@
+"""
+main.py
+-------
+Orquestador principal del pipeline INVICTUS.
+Este módulo centraliza la ejecución de la limpieza de datos, el modelado físico
+basado en series de Fourier y la detección de anomalías mediante Random Forest.
+"""
+
 import pandas as pd
 import argparse
 
-from pathlib import Path
 from datetime import datetime
 
 import joblib
@@ -22,7 +29,13 @@ class WaterApp:
     @staticmethod
     def run_pipeline() -> pd.DataFrame:
         """
-        Ejecuta el pipeline de detección basado en física.
+        Ejecuta el pipeline completo de detección de anomalías.
+
+        Coordina el preprocesamiento de todas las fuentes de datos y la 
+        ejecución del modelo híbrido (Física + ML).
+
+        Returns:
+            pd.DataFrame: Dataset final con resultados de predicción y alertas.
         """
         logger.info("========== INICIANDO PIPELINE ==========")
         
@@ -37,6 +50,14 @@ class WaterApp:
 
     @staticmethod
     def _save_results(df_resultados: pd.DataFrame, rf_model: object, rf_features: list) -> None:
+        """
+        Persiste los resultados del pipeline y realiza backups históricos.
+
+        Args:
+            df_resultados (pd.DataFrame): Dataframe final procesado.
+            rf_model (object): Modelo Random Forest entrenado.
+            rf_features (list): Lista de características utilizadas por el modelo.
+        """
         logger.info(f"Guardando dataframe final consolidado en {Paths.PROC_CSV_AMAEM_NOT_SCALED}")
         df_resultados.to_csv(Paths.PROC_CSV_AMAEM_NOT_SCALED, index=False)
 
@@ -59,7 +80,7 @@ class WaterApp:
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Water2Fraud Physical Pipeline")
+    parser = argparse.ArgumentParser(description="Pipeline")
     parser.add_argument("--run", action="store_true", help="Ejecutar el pipeline físico completo")
     args = parser.parse_args()
 

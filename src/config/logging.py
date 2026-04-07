@@ -1,3 +1,10 @@
+"""
+logging.py
+----------
+Sistema de registro (logging) centralizado del proyecto INVICTUS.
+Configura la salida de trazas tanto por consola como por archivo persistente.
+"""
+
 import logging
 from datetime import datetime
 from src.config.paths import Paths

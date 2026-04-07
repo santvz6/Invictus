@@ -1,3 +1,10 @@
+"""
+paths.py
+--------
+Gestión centralizada de rutas y directorios del proyecto INVICTUS.
+Define la estructura de carpetas para datos crudos, procesados, logs y experimentos.
+"""
+
 import os
 import shutil
 from pathlib import Path

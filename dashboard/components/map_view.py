@@ -26,15 +26,14 @@ def render_map(df_barrio: pd.DataFrame, feature_col: str, gdf=None, alert_col: s
     """
     Dibuja el mapa de calor interactivo.
 
-    Parameters
-    ----------
-    df_barrio : pd.DataFrame  — 1 fila por barrio (ya agregado)
-    feature_col : str         — Columna a usar como intensidad del calor
-    gdf : GeoDataFrame | None — Geometrías reales de barrios (puede ser None)
+    Args:
+        df_barrio (pd.DataFrame): Dataframe con métricas agregadas por barrio.
+        feature_col (str): Columna a visualizar como intensidad de color.
+        gdf (GeoDataFrame, optional): Geometrías de los barrios.
+        alert_col (str, optional): Columna de alertas para indicadores visuales.
 
-    Returns
-    -------
-    dict  — Salida de st_folium (contiene last_clicked, last_active_drawing, etc.)
+    Returns:
+        dict: Salida de st_folium con los eventos de interacción del mapa.
     """
     m = folium.Map(
         location=ALICANTE_CENTER,
@@ -67,7 +66,19 @@ def render_map(df_barrio: pd.DataFrame, feature_col: str, gdf=None, alert_col: s
 
 
 def _add_choropleth(m, gdf, df_barrio, feature_col, alert_col) -> bool:
-    """Añade capa Choropleth usando geometrías reales + datos. Retorna True si tuvo éxito."""
+    """
+    Añade una capa Choropleth basada en las geometrías reales de los barrios.
+
+    Args:
+        m (folium.Map): Instancia del mapa base.
+        gdf (GeoDataFrame): Geometrías de los barrios.
+        df_barrio (pd.DataFrame): Datos de consumo asociados.
+        feature_col (str): Variable de intensidad para el coloreado.
+        alert_col (str): Variable para el nivel de alerta.
+
+    Returns:
+        bool: True si la capa se añadió correctamente, False en caso contrario.
+    """
     import json
     import branca.colormap as cm
 
@@ -245,8 +256,14 @@ def _add_choropleth(m, gdf, df_barrio, feature_col, alert_col) -> bool:
 
 def _add_heatmap_fallback(m, df_barrio, feature_col, alert_col):
     """
-    Fallback: posiciona los barrios con coordenadas aproximadas centradas en Alicante
-    y dibuja un HeatMap interpolado.
+    Añade un mapa de calor (HeatMap) basado en coordenadas aproximadas.
+    Se utiliza como alternativa cuando no hay geometrías GeoJSON disponibles.
+
+    Args:
+        m (folium.Map): Instancia del mapa base.
+        df_barrio (pd.DataFrame): Datos de consumo por barrio.
+        feature_col (str): Variable de intensidad.
+        alert_col (str): Variable de alerta para los CircleMarkers.
     """
     # Coordenadas aproximadas de barrios conocidos (lat, lon)
     BARRIO_COORDS = {
@@ -317,7 +334,14 @@ def _add_heatmap_fallback(m, df_barrio, feature_col, alert_col):
 
 
 def _add_legend(m, feature_col: str, series: pd.Series):
-    """Añade una leyenda HTML flotante en esquina superior derecha."""
+    """
+    Añade una leyenda flotante personalizada mediante inyección de código HTML.
+
+    Args:
+        m (folium.Map): Instancia del mapa base.
+        feature_col (str): Nombre de la variable visualizada.
+        series (pd.Series): Serie de datos para calcular el rango de la leyenda.
+    """
     lo = float(series.min()) if len(series) > 0 else 0
     hi = float(series.max()) if len(series) > 0 else 1
     html = f"""

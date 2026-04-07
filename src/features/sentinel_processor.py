@@ -61,13 +61,26 @@ class SentinelProcessor:
 
     @staticmethod
     def _prepare_base_dataframe(df: pd.DataFrame) -> pd.DataFrame:
-        """Añade el periodo de cruce mensual al dataframe de AMAEM."""
+        """
+        Añade el periodo de cruce mensual al dataframe de AMAEM.
+
+        Args:
+            df (pd.DataFrame): Dataset base de AMAEM.
+
+        Returns:
+            pd.DataFrame: Dataset con columna 'fecha_cruce_mensual' (Period M).
+        """
         df['fecha_cruce_mensual'] = df[DatasetKeys.FECHA].dt.to_period('M')
         return df
 
     @staticmethod
     def _load_ndvi_data() -> pd.DataFrame | None:
-        """Localiza y carga el registro histórico de NDVI desde el sistema de archivos."""
+        """
+        Localiza y carga el registro histórico de NDVI desde el sistema de archivos.
+
+        Returns:
+            pd.DataFrame | None: Dataset de NDVI o None si no se encuentra el archivo.
+        """
         ruta_ndvi = Paths.SENTINEL_NDVI
         if not ruta_ndvi.exists():
             logger.warning(f"Archivo NDVI no localizado en {ruta_ndvi}. Se omite este enriquecimiento.")
@@ -78,6 +91,12 @@ class SentinelProcessor:
     def _prepare_ndvi_dataset(df_ndvi: pd.DataFrame) -> tuple[pd.DataFrame, list[str]]:
         """
         Estandariza el dataset de NDVI resolviendo nombres de columnas y normalizando barrios.
+
+        Args:
+            df_ndvi (pd.DataFrame): Dataset crudo de Sentinel.
+
+        Returns:
+            tuple[pd.DataFrame, list[str]]: (Dataset de NDVI normalizado, Claves de cruce).
         """
         # Identificación de la columna temporal en origen
         col_fecha = DatasetKeys.FECHA if DatasetKeys.FECHA in df_ndvi.columns else 'fecha_mes'
@@ -104,7 +123,17 @@ class SentinelProcessor:
 
     @staticmethod
     def _merge_ndvi_data(df: pd.DataFrame, df_ndvi: pd.DataFrame, merge_keys: list[str]) -> pd.DataFrame:
-        """Realiza el cruce de datos y ajusta las cabeceras resultantes."""
+        """
+        Realiza el cruce de datos y ajusta las cabeceras resultantes.
+
+        Args:
+            df (pd.DataFrame): Dataset base.
+            df_ndvi (pd.DataFrame): Datos de NDVI procesados.
+            merge_keys (list[str]): Columnas base para el cruce geocronológico.
+
+        Returns:
+            pd.DataFrame: Dataset enriquecido con la columna NDVI_SATELITE.
+        """
         # Seleccionamos solo las columnas necesarias para el cruce
         cols_clima = merge_keys + ['ndvi_satelite']
         df = pd.merge(df, df_ndvi[cols_clima], on=merge_keys, how='left')
@@ -115,7 +144,15 @@ class SentinelProcessor:
 
     @staticmethod
     def _finalize_sentinel(df: pd.DataFrame) -> pd.DataFrame:
-        """Limpia el entorno técnico y persiste el dataset intermedio."""
+        """
+        Limpia el entorno técnico y persiste el dataset intermedio.
+
+        Args:
+            df (pd.DataFrame): Dataset enriquecido.
+
+        Returns:
+            pd.DataFrame: Dataset finalizado para el siguiente paso.
+        """
         df = df.drop(columns=['fecha_cruce_mensual'])
         
         ruta_csv = Paths.PROC_CSV_STEP_SENTINEL

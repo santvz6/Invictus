@@ -1,8 +1,9 @@
 """
-app.py — Dashboard Interactivo INVICTUS (Water2Fraud)
-=====================================================
-Lanzar con:
-    streamlit run dashboard/app.py
+app.py
+------
+Dashboard interactivo para la visualización de anomalías hídricas 'INVICTUS'.
+Interfaz basada en Streamlit que permite explorar el impacto del turismo y el
+clima sobre el consumo de agua en los barrios de Alicante.
 """
 
 import sys
@@ -19,6 +20,11 @@ import streamlit as st
 _orig_json_default = json.JSONEncoder.default
 
 def _numpy_safe_default(self, obj):
+    """
+    Serializador JSON personalizado para tipos de datos de NumPy.
+    Garantiza la compatibilidad con Python 3.14+ al convertir tipos
+    específicos de NumPy a tipos nativos de Python.
+    """
     if isinstance(obj, np.integer):   return int(obj)
     if isinstance(obj, np.floating):  return float(obj)
     if isinstance(obj, np.ndarray):   return obj.tolist()

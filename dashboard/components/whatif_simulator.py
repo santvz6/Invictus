@@ -465,8 +465,17 @@ class WhatIfEngine:
 
 def _get_engine(df: pd.DataFrame, barrio: str | None) -> WhatIfEngine:
     """
-    Devuelve el WhatIfEngine del barrio activo, recalculándolo solo si el barrio cambia.
-    Usa session_state para cachear el objeto entre re-renders.
+    Obtiene o crea la instancia del motor de simulación para el barrio activo.
+
+    Implementa un sistema de caché en el estado de sesión de Streamlit para 
+    evitar la recalculación de betas en cada interacción.
+
+    Args:
+        df (pd.DataFrame): Dataset completo disponible.
+        barrio (str, optional): Nombre del barrio seleccionado.
+
+    Returns:
+        WhatIfEngine: Instancia configurada para el barrio especificado.
     """
     cache_key = f"_whatif_engine_{barrio}"
 
@@ -487,7 +496,15 @@ def _get_engine(df: pd.DataFrame, barrio: str | None) -> WhatIfEngine:
 
 
 def _get_alert_info(z: float) -> tuple[str, str, str]:
-    """Devuelve (nivel_texto, color, emoji) según el z-score."""
+    """
+    Determina el nivel de alerta y su representación visual basada en el Z-Score.
+
+    Args:
+        z (float): Valor de la puntuación Z simulada.
+
+    Returns:
+        tuple[str, str, str]: (Nivel de alerta, Color hexadecimal, Emoji indicador).
+    """
     az = abs(z)
     sign = "EXCESO" if z > 0 else "DEFECTO"
     if az > Z_GRAVE:
@@ -501,7 +518,17 @@ def _get_alert_info(z: float) -> tuple[str, str, str]:
 
 
 def _build_gauge(z_value: float, nivel: str, color: str) -> go.Figure:
-    """Construye el gauge chart del Z-Score simulado."""
+    """
+    Construye el gráfico de aguja (gauge) para el Z-Score simulado.
+
+    Args:
+        z_value (float): Valor Z a mostrar.
+        nivel (str): Texto descriptivo del nivel de alerta.
+        color (str): Color asociado a la alerta.
+
+    Returns:
+        go.Figure: Gráfico de Plotly configurado.
+    """
     fig = go.Figure(go.Indicator(
         mode="gauge+number+delta",
         value=round(z_value, 3),
@@ -540,9 +567,17 @@ def _build_gauge(z_value: float, nivel: str, color: str) -> go.Figure:
 
 def _build_radar_chart(engine: WhatIfEngine, feature_values: dict[str, float]) -> go.Figure:
     """
-    Radar (spider) chart que muestra la desviación % de cada feature
-    respecto a su media histórica del barrio.
-    Punto 0 = valores históricos, exterior = desviación máxima.
+    Genera un gráfico de radar que muestra las desviaciones del escenario simulado.
+
+    Compara los valores actuales del escenario frente a la media histórica 
+    del barrio seleccionado en unidades de desviación típica (sigma).
+
+    Args:
+        engine (WhatIfEngine): Motor del barrio activo.
+        feature_values (dict[str, float]): Valores simulados en los sliders.
+
+    Returns:
+        go.Figure: Gráfico radar de Plotly.
     """
     feats_disponibles = [f for f in FEATURES_WHATIF if f["col"] in engine.feat_stats]
     if not feats_disponibles:
@@ -632,8 +667,15 @@ def _build_annual_profile(
     mes_simulacion: int | None,
 ) -> go.Figure:
     """
-    Muestra el perfil anual histórico del barrio (consumo_ratio medio por mes)
-    con el punto simulado destacado en el mes seleccionado.
+    Dibuja el perfil anual histórico con el punto simulado destacado.
+
+    Args:
+        engine (WhatIfEngine): Motor de cálculo.
+        consumo_sim (float): Valor del consumo resultante de la simulación.
+        mes_simulacion (int, optional): Mes anclado para la simulación.
+
+    Returns:
+        go.Figure: Gráfico de líneas temporal.
     """
     profile = engine.get_annual_profile()
     if profile.empty:
@@ -708,8 +750,17 @@ def _build_annual_profile(
 
 def _build_waterfall_chart(engine: WhatIfEngine, result: dict) -> go.Figure:
     """
-    Waterfall chart que muestra cómo se construye el consumo simulado:
-    Base Fourier → (+/-) cada feature → Consumo Simulado.
+    Genera un gráfico de cascada (waterfall) de atribución de impacto.
+
+    Desglosa el consumo simulado final partiendo de la base de Fourier y 
+    sumando algebraicamente las contribuciones de cada variable exógena.
+
+    Args:
+        engine (WhatIfEngine): Motor de cálculo.
+        result (dict): Diccionario con los deltas calculados por la simulación.
+
+    Returns:
+        go.Figure: Gráfico de cascada de Plotly.
     """
     if not result["delta_por_feature"]:
         return go.Figure()
@@ -765,7 +816,12 @@ def _build_waterfall_chart(engine: WhatIfEngine, result: dict) -> go.Figure:
 
 
 def _render_plausibilidad(plaus: dict) -> None:
-    """Muestra el indicador de plausibilidad del escenario."""
+    """
+    Renderiza visualmente el nivel de plausibilidad del escenario.
+
+    Args:
+        plaus (dict): Resultados del cálculo de Mahalanobis.
+    """
     nivel = plaus.get("nivel")
     dist  = plaus.get("distancia")
     pct   = plaus.get("percentil")

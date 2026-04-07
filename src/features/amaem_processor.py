@@ -22,7 +22,15 @@ class AMAEMProcessor:
     def _rename_df(df: pd.DataFrame) -> pd.DataFrame:
         """
         Estandariza los nombres de las columnas basándose en las constantes de DatasetKeys.
-        Garantiza que el resto del sistema sea agnóstico a cambios en las cabeceras del CSV de entrada.
+
+        Garantiza que el resto del sistema sea agnóstico a cambios en las cabeceras 
+        del CSV de entrada.
+
+        Args:
+            df (pd.DataFrame): Dataset original.
+
+        Returns:
+            pd.DataFrame: Dataset con columnas renombradas.
         """
         return df.copy().rename(columns={
             "Barrio": DatasetKeys.BARRIO, 
@@ -36,8 +44,15 @@ class AMAEMProcessor:
     def _process_NaN(df: pd.DataFrame) -> pd.DataFrame:
         """
         Elimina registros con valores incompletos.
+
         Se opta por la eliminación total dado que el volumen de nulos es residual 
         y no compromete la representatividad estadística de los barrios.
+
+        Args:
+            df (pd.DataFrame): Dataset a limpiar.
+
+        Returns:
+            pd.DataFrame: Dataset sin filas nulas.
         """
         return df.copy().dropna()
     
@@ -50,6 +65,12 @@ class AMAEMProcessor:
         1. Limpieza de separadores de miles y conversión a enteros.
         2. Cálculo del Ratio de Consumo (Litros/Contrato), variable objetivo del modelo.
         3. Parseo de fechas y extracción del componente mensual para análisis estacional.
+
+        Args:
+            df (pd.DataFrame): Dataset tipificado parcialmente.
+
+        Returns:
+            pd.DataFrame: Dataset con tipos correctos y métricas (Consumo_Ratio, Mes).
         """
         df = df.copy()
 

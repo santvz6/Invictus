@@ -1,3 +1,10 @@
+"""
+ai_constants.py
+---------------
+Constantes técnicas y parámetros de hiper-parametrización para los modelos de IA.
+Incluye la configuración para Ollama (LLM local) y semillas de aleatoriedad.
+"""
+
 class AIConstants:
     """
     Parámetros técnicos y umbrales para los modelos de Machine Learning.
@@ -18,5 +25,5 @@ class AIConstants:
     LLM_TOP_K = 40  # Tokens a considerar en cada paso
     LLM_TOP_P = 0.9  # Nucleus sampling (0-1)
 
-    # Percentiles para definir el corte de anomalías (Riesgo de Fraude)
+    # Percentiles para definir el corte de anomalías (Detección de Anomalías)
     FRAUD_RISK_PERCENTILE = 90

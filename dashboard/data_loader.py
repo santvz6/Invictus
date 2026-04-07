@@ -1,7 +1,7 @@
 """
 data_loader.py
 --------------
-Carga los datos procesados del pipeline Water2Fraud.
+Carga los datos procesados del pipeline INVICTUS.
 Si el CSV procesado no existe todavía, genera datos sintéticos de demostración
 para que el dashboard sea funcional en todo momento.
 """
@@ -98,7 +98,19 @@ def load_geodataframe() -> gpd.GeoDataFrame | None:
 def filter_dataframe(df: pd.DataFrame, fecha_inicio, fecha_fin, 
                      barrio_filter: str | None = None,
                      uso_filter: str | None = None) -> pd.DataFrame:
-    """Filtra el DataFrame por rango de fechas, barrio y uso."""
+    """
+    Aplica filtros geo-temporales y por segmentación de uso al dataset.
+
+    Args:
+        df (pd.DataFrame): Dataset completo analizado por el pipeline.
+        fecha_inicio (datetime): Límite inferior del rango temporal.
+        fecha_fin (datetime): Límite superior del rango temporal.
+        barrio_filter (str, optional): Nombre del barrio específico o 'Todos los barrios'.
+        uso_filter (str, optional): Categoría de uso (DOMESTICO, etc.).
+
+    Returns:
+        pd.DataFrame: Vista filtrada de los datos lista para visualización.
+    """
     mask = (df[DatasetKeys.FECHA] >= pd.Timestamp(fecha_inicio)) & \
            (df[DatasetKeys.FECHA] <= pd.Timestamp(fecha_fin))
     df_filtered = df[mask]
@@ -113,7 +125,15 @@ def filter_dataframe(df: pd.DataFrame, fecha_inicio, fecha_fin,
 
 
 def aggregate_by_barrio(df: pd.DataFrame) -> pd.DataFrame:
-    """Agrega el DataFrame filtrado a nivel de barrio (una fila por barrio)."""
+    """
+    Realiza la agregación espacial de métricas para la visualización en el mapa choropleth.
+    
+    Agrupa los datos por barrio y selecciona el estadístico más representativo (suma o media)
+    para cada variable predictora y de resultado.
+
+    Returns:
+        pd.DataFrame: Una fila por barrio con métricas agregadas y normalizadas para Folium.
+    """
     
     df_copy = df.copy()
     if DatasetKeys.ALERTA_NIVEL in df_copy.columns:
@@ -123,8 +143,8 @@ def aggregate_by_barrio(df: pd.DataFrame) -> pd.DataFrame:
         DatasetKeys.CONSUMO:                  "sum",
         DatasetKeys.NUM_CONTRATOS:            "mean",
         DatasetKeys.CONSUMO_RATIO:            "mean",
-        DatasetKeys.OCUP_VT_PROV_INE:        "mean",
-        DatasetKeys.PERNOCT_VT_PROV_INE:     "mean",
+        DatasetKeys.OCUP_VT_PROV_INE:         "mean",
+        DatasetKeys.PERNOCT_VT_PROV_INE:      "mean",
         DatasetKeys.DIAS_FESTIVOS:            "mean",
         DatasetKeys.TEMP_MEDIA:               "mean",
         DatasetKeys.PRECIPITACION:            "mean",

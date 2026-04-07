@@ -4,7 +4,7 @@
 
 ### *Detección de Anomalías Hídricas y Atribución Causal Inteligente*
 
-[![Python](https://img.shields.io/badge/Python-3.13+-3776AB?style=for-the-badge&logo=python&logoColor=white)](https://python.org)
+[![Python](https://img.shields.io/badge/Python-3.13.12-3776AB?style=for-the-badge&logo=python&logoColor=white)](https://python.org)
 [![Streamlit](https://img.shields.io/badge/Streamlit-Dashboard-FF4B4B?style=for-the-badge&logo=streamlit&logoColor=white)](https://streamlit.io)
 [![Fourier](https://img.shields.io/badge/Fourier-Series-4cc9f0?style=for-the-badge&logo=scipy&logoColor=white)](https://scipy.org)
 [![Random Forest](https://img.shields.io/badge/Random%20Forest-Scikit--Learn-f39c12?style=for-the-badge&logo=scikit-learn&logoColor=white)](https://scikit-learn.org)
@@ -38,13 +38,11 @@ Para más detalles sobre la arquitectura IA utilizada:
 
 ---
 
-## ¿Cómo funciona?
-
-INVICTUS utiliza un **modelo híbrido de física + machine learning** para determinar cuánta agua *debería* consumir cada barrio de Alicante, y detectar desviaciones que podrían indicar problemas en la red, picos climáticos extremos, o variaciones demográficas no declaradas.
+INVICTUS utiliza un **modelo híbrido de física + machine learning** para determinar cuánta agua *debería* consumir cada barrio de Alicante, y detectar desviaciones que podrían indicar problemas en la red, picos climáticos extremos, o presiones de consumo no explicadas por los registros oficiales.
 
 ### El Modelo en 3 Frases
 
-1. **Base Física (Fourier):** Ajustamos una onda estacional de 2° orden por cada combinación `[Barrio × Uso]`, aplicando un **filtro de meses neutros** para aislar el patrón natural base sin la contaminación del sobreconsumo turístico — la "huella dactilar hídrica" pura de cada zona.
+1. **Base Física (Fourier):** Ajustamos una onda estacional de 2° orden por cada combinación `[Barrio × Uso]`, aplicando un **filtro de meses neutros** para aislar el patrón natural base sin la contaminación del sobreconsumo estacional — la "huella dactilar hídrica" pura de cada zona.
 
 2. **Impacto Exógeno (Random Forest):** El residuo entre lo que Fourier predice y el consumo real se modela con un RF que aprende el impacto de la temperatura, las precipitaciones, la vegetación, el **turismo por pernoctaciones (INE)** y el calendario de **festivos (incluyendo días puente)**.
 
@@ -98,7 +96,7 @@ INVICTUS integra **6 fuentes de datos públicas** cruzadas geo-temporalmente a n
 | 📅 **Festivos** | Ayto. Alicante | Días festivos, % festivos/mes | Barrio × Mes |
 
 > [!IMPORTANT]
-> La detección del **"Gap de Turismo No Declarado"** se calcula como la diferencia entre las viviendas turísticas estimadas por el INE y las oficialmente registradas en la GVA, distribuida proporcionalmente por barrio.
+> La detección del **"Gap de Consumo No Explicado"** se calcula como la diferencia entre la presión estimada por variables exógenas (INE) y la oficialmente registrada en la GVA, distribuida proporcionalmente por barrio.
 
 ---
 
@@ -204,10 +202,10 @@ graph LR
     B --> C[Fase B<br>Turismo INE+GVA]
     C --> D[Fase C<br>Clima+Satélite]
     D --> E[Fase D<br>Festivos]
-    E --> F[Fase E<br>Gap Turismo No Declarado]
+    E --> F[Fase E<br>Gap Consumo No Explicado]
     F --> G[🔬 Fourier + RF]
     G --> H[📊 Dashboard]
-    
+    La carpeta 
     style A fill:#1b4965,stroke:#4cc9f0,color:#fff
     style G fill:#e76f51,stroke:#f4a261,color:#fff
     style H fill:#52b788,stroke:#d9ed92,color:#fff

@@ -97,7 +97,12 @@ class INETourismProcessor:
     def _map_mun2barrios() -> pd.DataFrame:
         """
         Realiza el 'weighting' o distribución pesada de datos municipales a nivel de barrio.
-        Utiliza un mapeo predefinido para repartir el total de viviendas turísticas.
+
+        Utiliza un mapeo predefinido para repartir el total de viviendas turísticas
+        municipales basándose en pesos específicos por barrio.
+
+        Returns:
+            pd.DataFrame: Series temporales de VT por barrio y mes.
         """
         df_mun = pd.read_csv(Paths.INE_MUNICIPIOS_PLAZAS, encoding="latin1", sep="\t")
         
@@ -132,7 +137,16 @@ class INETourismProcessor:
     
     @staticmethod
     def _merge_domesticos_ine(df_amaem: pd.DataFrame, df_barrio: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFrame]:
-        """Aisla los contratos domésticos para calcular el ratio de penetración turística."""
+        """
+        Aisla contratos domésticos y cruza con la penetración turística del barrio.
+
+        Args:
+            df_amaem (pd.DataFrame): Dataset base completo.
+            df_barrio (pd.DataFrame): Datos de VT pesados por barrio.
+
+        Returns:
+            tuple[pd.DataFrame, pd.DataFrame]: (DF AMAEM Domésticos, DF Cruzado).
+        """
         df_amaem_dom = df_amaem[df_amaem[DatasetKeys.USO] == 'DOMESTICO'][[DatasetKeys.BARRIO, 'fecha_cruce_mensual', DatasetKeys.NUM_CONTRATOS]]
         df_merge = pd.merge(df_barrio, df_amaem_dom, on=[DatasetKeys.BARRIO, 'fecha_cruce_mensual'], how='left')
         return df_amaem_dom, df_merge
@@ -140,9 +154,16 @@ class INETourismProcessor:
     @staticmethod
     def _interpolacion_mensual(df_merge: pd.DataFrame) -> pd.DataFrame:
         """
-        Completa los vacíos temporales mediante interpolación lineal.
+        Completa los vacíos temporales mediante interpolación lineal de series históricas.
+        
         Dado que el INE puede no reportar datos mensualmente, esta función genera 
-        continuidad en la serie histórica.
+        continuidad en la serie histórica para evitar saltos artificiales en el modelo.
+
+        Args:
+            df_merge (pd.DataFrame): Dataset crudo tras el merge.
+
+        Returns:
+            pd.DataFrame: Dataset interpolado linealmente a nivel mensual.
         """
         periodo_minimo = df_merge['fecha_cruce_mensual'].min()
         rango_completo = pd.period_range(start=periodo_minimo, end='2024-12', freq='M')
@@ -164,7 +185,16 @@ class INETourismProcessor:
     
     @staticmethod
     def _porcentaje_vt(df_amaem_dom: pd.DataFrame, df_interpolated: pd.DataFrame) -> pd.DataFrame:
-        """Calcula el porcentaje relativo de VT respecto al número total de contratos."""
+        """
+        Calcula el porcentaje relativo de VT respecto al número total de contratos.
+
+        Args:
+            df_amaem_dom (pd.DataFrame): Datos de contratación doméstica.
+            df_interpolated (pd.DataFrame): Datos de VT interpolados.
+
+        Returns:
+            pd.DataFrame: Dataset final municipal con métricas absolutas y porcentuales.
+        """
         df_resampled = pd.merge(df_interpolated, df_amaem_dom, on=[DatasetKeys.BARRIO, 'fecha_cruce_mensual'], how='left')
         
         # Ingeniería de características: Ratio de Vivienda Turística / Contratos Totales
@@ -176,7 +206,15 @@ class INETourismProcessor:
 
     @staticmethod
     def _process_municipios(df_amaem: pd.DataFrame) -> pd.DataFrame:
-        """Encapsula el flujo completo de procesamiento de datos por municipio."""
+        """
+        Encapsula el flujo completo de procesamiento de datos por municipio.
+
+        Args:
+            df_amaem (pd.DataFrame): Dataset original de AMAEM.
+
+        Returns:
+            pd.DataFrame: Datos municipales listos para el merge final.
+        """
         df_barrio               = INETourismProcessor._map_mun2barrios()
         df_amaem_dom, df_merge  = INETourismProcessor._merge_domesticos_ine(df_amaem, df_barrio)
         df_interpolated         = INETourismProcessor._interpolacion_mensual(df_merge)
@@ -190,7 +228,12 @@ class INETourismProcessor:
 
     @staticmethod
     def _process_provincia() -> pd.DataFrame:
-        """Limpia y tipifica las series temporales de ocupación hotelera a nivel provincial."""
+        """
+        Limpia y tipifica las series temporales de ocupación hotelera a nivel provincial.
+
+        Returns:
+            pd.DataFrame: Series mensuales de pernoctaciones y ocupación provincial.
+        """
         df_prov = pd.read_csv(Paths.INE_PROVINCIA_VT, encoding="utf-8", sep=";")
         
         # Normalización agresiva de cabeceras para eliminar acentos y caracteres especiales
