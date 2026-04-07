@@ -1,0 +1,366 @@
+"""
+map_view.py
+-----------
+Componente del mapa principal: Folium Choropleth + HeatMap plugin.
+Retorna el barrio seleccionado al hacer clic en un polígono.
+"""
+
+import numpy as np
+import pandas as pd
+import folium
+from folium.plugins import HeatMap
+import streamlit as st
+from streamlit_folium import st_folium
+
+from src.config import DatasetKeys
+
+ALICANTE_CENTER = [38.3452, -0.4810]
+ALICANTE_ZOOM   = 13
+
+# Paleta de colores por intensidad (fría → caliente)
+COLORMAP_STEPS  = ["#0d1b2a", "#1b4965", "#2d6a4f", "#52b788", "#d9ed92",
+                   "#f4a261", "#e76f51", "#c1121f"]
+
+
+def render_map(df_barrio: pd.DataFrame, feature_col: str, gdf=None, alert_col: str = None) -> dict:
+    """
+    Dibuja el mapa de calor interactivo.
+
+    Args:
+        df_barrio (pd.DataFrame): Dataframe con métricas agregadas por barrio.
+        feature_col (str): Columna a visualizar como intensidad de color.
+        gdf (GeoDataFrame, optional): Geometrías de los barrios.
+        alert_col (str, optional): Columna de alertas para indicadores visuales.
+
+    Returns:
+        dict: Salida de st_folium con los eventos de interacción del mapa.
+    """
+    m = folium.Map(
+        location=ALICANTE_CENTER,
+        zoom_start=ALICANTE_ZOOM,
+        tiles="CartoDB dark_matter",
+        prefer_canvas=True,
+    )
+
+    # ── Capa Choropleth (si tenemos GeoDataFrame real) ─────────────────
+    choropleth_success = False
+    if gdf is not None and not gdf.empty and feature_col in df_barrio.columns:
+        try:
+            choropleth_success = _add_choropleth(m, gdf, df_barrio, feature_col, alert_col)
+        except Exception:
+            choropleth_success = False
+    
+    if not choropleth_success:
+        # ── Fallback: HeatMap con coordenadas aproximadas por barrio ──
+        _add_heatmap_fallback(m, df_barrio, feature_col, alert_col)
+
+    # ── Leyenda flotante ───────────────────────────────────────────────
+    _add_legend(m, feature_col, df_barrio.get(feature_col, pd.Series([0])))
+
+    return st_folium(
+        m, 
+        width='stretch', 
+        height=650, 
+        returned_objects=["last_active_drawing", "last_clicked"]
+    )
+
+
+def _add_choropleth(m, gdf, df_barrio, feature_col, alert_col) -> bool:
+    """
+    Añade una capa Choropleth basada en las geometrías reales de los barrios.
+
+    Args:
+        m (folium.Map): Instancia del mapa base.
+        gdf (GeoDataFrame): Geometrías de los barrios.
+        df_barrio (pd.DataFrame): Datos de consumo asociados.
+        feature_col (str): Variable de intensidad para el coloreado.
+        alert_col (str): Variable para el nivel de alerta.
+
+    Returns:
+        bool: True si la capa se añadió correctamente, False en caso contrario.
+    """
+    import json
+    import branca.colormap as cm
+
+    # Merge geometría + datos
+    gdf_merged = gdf.copy()
+    
+    # 1. Estandarización robusta y filtro antaisolape masivo
+    if "barrio_id" in gdf_merged.columns:
+        gdf_merged["barrio_limpio"] = gdf_merged["barrio_id"]
+    else:
+        gdf_merged["barrio_limpio"] = gdf_merged["DENOMINACI"].str.strip().str.upper() \
+            if "DENOMINACI" in gdf_merged.columns else gdf_merged.iloc[:, 0].astype(str).str.strip().str.upper()
+            
+    gdf_merged = gdf_merged[~gdf_merged["barrio_limpio"].isin(["ALICANTE", "ALACANT", "ALICANTE/ALACANT"])]
+
+    # --- CORRECCIÓN ESPACIAL DE NOMBRES (Búsqueda por Subcadena) ---
+    # Soluciona problemas de espacios invisibles, guiones y prefijos (ej: "EL ", "PDA. ")
+    MAPEO_GEOJSON_A_CSV = {
+        "RAVAL ROIG": "RAVAL ROIG -V. DEL SOCORRO",
+        "SOCORRO": "RAVAL ROIG -V. DEL SOCORRO",
+        "SAN FERNANDO": "SAN FERNANDO-PRIN. MERCEDES",
+        "PRINCESA MERCEDES": "SAN FERNANDO-PRIN. MERCEDES",
+        "ENSANCHE": "ENSANCHE DIPUTACION",
+        "DIPUTACION": "ENSANCHE DIPUTACION",
+        "IFNI": "SIDI IFNI - NOU ALACANT",
+        "NOU ALACANT": "SIDI IFNI - NOU ALACANT",
+        "BACAROT": "BACAROT",
+        "MORANT": "MORANT -SAN NICOLAS BARI",
+        "SAN NICOLAS": "MORANT -SAN NICOLAS BARI",
+
+        # No se puede mapear a GEOJSON:
+        # PALMERAL
+        # MORALET
+        # VALLONGA
+    }
+    
+    def normalize_name(text):
+        replacements = {"Á": "A", "É": "E", "Í": "I", "Ó": "O", "Ú": "U", "À": "A", "È": "E", "Ì": "I", "Ò": "O", "Ù": "U"}
+        t = str(text).upper().strip()
+        for a, b in replacements.items():
+            t = t.replace(a, b)
+        return t
+
+    gdf_merged["barrio_limpio"] = gdf_merged["barrio_limpio"].apply(
+        lambda x: next((val for key, val in MAPEO_GEOJSON_A_CSV.items() if key in normalize_name(x)), normalize_name(x))
+    )
+
+    from src.config import DatasetKeys
+    df_temp = df_barrio.copy()
+    df_temp["barrio_limpio"] = df_temp[DatasetKeys.BARRIO].str.split("-", n=1).str[-1].str.strip().str.upper()
+
+    # --- DETECCIÓN DE BARRIOS FALTANTES (DEBUG VISUAL) ---
+    barrios_csv = set(df_temp["barrio_limpio"].unique())
+    barrios_geo = set(gdf_merged["barrio_limpio"].unique())
+    
+    # Comparamos qué barrios del CSV no tienen pareja en el GeoJSON (excluyendo "DISPERSOS")
+    barrios_faltantes = barrios_csv - barrios_geo - {"DISPERSOS", "DESCONOCIDO", ""}
+
+    # FIX: Un inner merge asegura que eliminemos los polígonos que NO están en nuestros datos 
+    # protegiendo los barrios que realmente utilizamos.
+    gdf_merged = gdf_merged.merge(df_temp, on="barrio_limpio", how="inner")
+    
+    if gdf_merged.empty:
+        return False
+        
+    gdf_merged[feature_col] = gdf_merged[feature_col].fillna(0)
+    
+    for col in [DatasetKeys.Z_ERROR_FINAL, alert_col]:
+        if col not in gdf_merged.columns:
+            gdf_merged[col] = 0.0
+
+    # 2. ESCALADO ROBUSTO CONTRA OUTLIERS
+    # ── FIX: cast a float nativo — numpy.float64 rompe la serialización JSON de Jinja2/branca
+    vmin = float(gdf_merged[feature_col].quantile(0.05))
+    vmax = float(gdf_merged[feature_col].quantile(0.95))
+    if vmin == vmax:
+        vmin, vmax = vmin * 0.9, vmax * 1.1 + 1e-5
+
+    colormap = cm.LinearColormap(
+        colors=["#0d1b2a", "#1b4965", "#4cc9f0", "#f39c12", "#e74c3c"],
+        vmin=vmin, vmax=vmax,
+        caption=feature_col,
+    )
+
+    def style_fn(feature):
+        val = feature["properties"].get(feature_col, 0) or 0
+        return {
+            "fillColor":   colormap(val),
+            "color":       "rgba(255, 255, 255, 0.4)",
+            "weight":      1,
+            "fillOpacity": 0.75,
+        }
+
+    def highlight_fn(_):
+        return {"weight": 3, "color": "#4cc9f0", "fillOpacity": 0.95}
+
+    # 3. FIX HOVER Y SOLAPE: Se unifica el Tooltip y el Style en una sola capa
+    # ── FIX DEFINITIVO: to_json() serializa correctamente int64/float64 de numpy.
+    # __geo_interface__ reconstruye internamente los valores y bypasea las conversiones.
+    geojson_data = json.loads(gdf_merged.to_json())
+    folium.GeoJson(
+        geojson_data,
+        style_function=style_fn,
+        highlight_function=highlight_fn,
+        tooltip=folium.GeoJsonTooltip(
+            fields=["barrio_limpio", feature_col,
+                    DatasetKeys.Z_ERROR_FINAL, alert_col],
+            aliases=["Barrio:", f"{feature_col}:", "Z-Score Residual:", "Alertas Activas:"],
+            localize=True,
+            style=("background-color: #0d1b2a; color: #e0e0e0; font-family: 'Inter', sans-serif; "
+                   "font-size: 13px; padding: 10px; border: 1px solid #4cc9f0; border-radius: 6px;")
+        ),
+        popup=folium.GeoJsonPopup(fields=["barrio_limpio"], aliases=["Barrio:"]),
+    ).add_to(m)
+
+    # --- ALTERNATIVA HÍBRIDA: POLÍGONOS MANUALES PARA BARRIOS SIN GEOMETRÍA ---
+    if barrios_faltantes:
+        # Coordenadas GPS (lat, lon) de los vértices que forman la silueta de los distritos rurales
+        POLIGONOS_FALTANTES = {
+            "EL PALMERAL": [[38.3174, -0.5191], [38.3158, -0.5144], [38.3094, -0.5188], [38.3122, -0.5230]],
+            "MORALET": [[38.4550, -0.5820], [38.4410, -0.5560], [38.4230, -0.5620], [38.4280, -0.5950], [38.4480, -0.6050], [38.4550, -0.5820]],
+            "FONTCALENT": [[38.3780, -0.5950], [38.3580, -0.5720], [38.3450, -0.5880], [38.3620, -0.6120], [38.3780, -0.5950]],
+            "PDA VALLONGA": [[38.3520, -0.5480], [38.3380, -0.5380], [38.3280, -0.5550], [38.3420, -0.5680], [38.3520, -0.5480]]
+        }
+        
+        for barrio in barrios_faltantes:
+            if barrio in POLIGONOS_FALTANTES:
+                row_data = df_temp[df_temp["barrio_limpio"] == barrio]
+                if not row_data.empty:
+                    row = row_data.iloc[0]
+                    val = row.get(feature_col, 0)
+                    alertas = int(row.get(alert_col, 0))
+                    
+                    # Convertimos lat, lon a lon, lat para GeoJSON
+                    coords_lon_lat = [[lon, lat] for lat, lon in POLIGONOS_FALTANTES[barrio]]
+                    # GeoJSON exige que el polígono esté cerrado (primer y último punto coincidan)
+                    if coords_lon_lat[0] != coords_lon_lat[-1]:
+                        coords_lon_lat.append(coords_lon_lat[0])
+                        
+                    geojson_feature = {
+                        "type": "Feature",
+                        "geometry": {
+                            "type": "Polygon",
+                            "coordinates": [coords_lon_lat]
+                        },
+                        "properties": {
+                            "barrio_limpio": barrio,
+                            feature_col: val,
+                            DatasetKeys.Z_ERROR_FINAL: row.get(DatasetKeys.Z_ERROR_FINAL, 0),
+                            alert_col: alertas
+                        }
+                    }
+                    
+                    folium.GeoJson(
+                        geojson_feature,
+                        style_function=lambda feature, c=colormap(val): {
+                            "fillColor": c,
+                            "color": "rgba(255, 255, 255, 0.4)", 
+                            "weight": 1,
+                            "fillOpacity": 0.75,
+                        },
+                        highlight_function=highlight_fn,
+                        tooltip=folium.GeoJsonTooltip(
+                            fields=["barrio_limpio", feature_col, DatasetKeys.Z_ERROR_FINAL, alert_col],
+                            aliases=["Barrio (Polígono):", f"{feature_col}:", "Z-Score Residual:", "Alertas Activas:"],
+                            localize=True,
+                            style=("background-color: #0d1b2a; color: #e0e0e0; font-family: 'Inter', sans-serif; "
+                                   "font-size: 13px; padding: 10px; border: 1px solid #4cc9f0; border-radius: 6px;")
+                        ),
+                        popup=folium.GeoJsonPopup(fields=["barrio_limpio"], aliases=["Barrio:"]),
+                    ).add_to(m)
+
+    return True
+
+
+def _add_heatmap_fallback(m, df_barrio, feature_col, alert_col):
+    """
+    Añade un mapa de calor (HeatMap) basado en coordenadas aproximadas.
+    Se utiliza como alternativa cuando no hay geometrías GeoJSON disponibles.
+
+    Args:
+        m (folium.Map): Instancia del mapa base.
+        df_barrio (pd.DataFrame): Datos de consumo por barrio.
+        feature_col (str): Variable de intensidad.
+        alert_col (str): Variable de alerta para los CircleMarkers.
+    """
+    # Coordenadas aproximadas de barrios conocidos (lat, lon)
+    BARRIO_COORDS = {
+        "PLAYA SAN JUAN":         (38.3768, -0.4326),
+        "VISTAHERMOSA":           (38.3700, -0.4400),
+        "ZONA TURISTICA":         (38.3560, -0.4800),
+        "FLORIDA BAJA":           (38.3350, -0.4900),
+        "FLORIDA ALTA":           (38.3280, -0.4860),
+        "BENALUA":                (38.3410, -0.4860),
+        "CAROLINAS ALTAS":        (38.3490, -0.4750),
+        "CAROLINAS BAJAS":        (38.3460, -0.4780),
+        "CASCO ANTIGUO":          (38.3450, -0.4810),
+        "GRAN VIA":               (38.3430, -0.4840),
+        "MERCADO":                (38.3440, -0.4830),
+        "SAN BLAS":               (38.3380, -0.4960),
+        "CIUDAD JARDIN":          (38.3520, -0.4990),
+        "LOS ANGELES":            (38.3300, -0.4920),
+        "RABASA":                 (38.3260, -0.4840),
+        "MONTE TOSSAL":           (38.3480, -0.4850),
+        "EL PALMERAL":            (38.3600, -0.4700),
+        "TÓMBOLA":                (38.3650, -0.4620),
+        "VIRGEN DEL REMEDIO":     (38.3320, -0.5010),
+        "JUAN XXIII":             (38.3290, -0.5050),
+    }
+
+    if feature_col not in df_barrio.columns:
+        return
+
+    series = df_barrio[feature_col].replace([np.inf, -np.inf], np.nan).fillna(0)
+    vmax = series.max()
+    if pd.isna(vmax) or vmax == 0:
+        vmax = 1
+
+    heat_data = []
+    for _, row in df_barrio.iterrows():
+        barrio = row.get("barrio", row.iloc[0])
+        lat, lon = BARRIO_COORDS.get(barrio, (
+            ALICANTE_CENTER[0] + np.random.uniform(-0.04, 0.04),
+            ALICANTE_CENTER[1] + np.random.uniform(-0.04, 0.04),
+        ))
+        weight = float(row[feature_col]) / vmax if vmax else 0
+        heat_data.append([lat, lon, weight])
+
+    if heat_data:
+        HeatMap(
+            heat_data,
+            radius=35, blur=25,
+            gradient={0.2: "#1b4965", 0.5: "#52b788", 0.75: "#f4a261", 1.0: "#c1121f"},
+        ).add_to(m)
+
+    # Marcadores para poder clicar
+    for _, row in df_barrio.iterrows():
+        barrio = row.get("barrio", row.iloc[0])
+        lat, lon = BARRIO_COORDS.get(barrio, (
+            ALICANTE_CENTER[0] + np.random.uniform(-0.04, 0.04),
+            ALICANTE_CENTER[1] + np.random.uniform(-0.04, 0.04),
+        ))
+        val = row.get(feature_col, 0)
+        anomalias = int(row.get(alert_col, 0))
+        folium.CircleMarker(
+            location=[lat, lon],
+            radius=6,
+            color="#c1121f" if anomalias > 0 else "#52b788",
+            fill=True, fill_opacity=0.2,
+            tooltip=f"<b>{barrio}</b><br>{feature_col}: {val:.1f}<br>Alertas: {anomalias}",
+            popup=barrio,
+        ).add_to(m)
+
+
+def _add_legend(m, feature_col: str, series: pd.Series):
+    """
+    Añade una leyenda flotante personalizada mediante inyección de código HTML.
+
+    Args:
+        m (folium.Map): Instancia del mapa base.
+        feature_col (str): Nombre de la variable visualizada.
+        series (pd.Series): Serie de datos para calcular el rango de la leyenda.
+    """
+    lo = float(series.min()) if len(series) > 0 else 0
+    hi = float(series.max()) if len(series) > 0 else 1
+    html = f"""
+    <div style="
+        position: fixed; top: 10px; right: 10px; z-index: 1000;
+        background: rgba(13,27,42,0.85); color: #e0e0e0;
+        padding: 10px 16px; border-radius: 10px;
+        font-family: 'Inter', sans-serif; font-size: 12px;
+        backdrop-filter: blur(6px); border: 1px solid rgba(255,255,255,0.12);
+    ">
+        <b style="font-size:13px;">{feature_col}</b><br>
+        <div style="display:flex; align-items:center; gap:6px; margin-top:6px;">
+            <span style="font-size:10px;">{lo:.1f}</span>
+            <div style="height:10px; width:90px; background:linear-gradient(to right,#1b4965,#52b788,#f4a261,#c1121f);
+                        border-radius:3px;"></div>
+            <span style="font-size:10px;">{hi:.1f}</span>
+        </div>
+        <div style="margin-top:6px; font-size:10px; color:#c1121f;">Alerta de Consumo</div>
+        <div style="font-size:10px; color:#52b788;">Sin alerta</div>
+    </div>
+    """
+    m.get_root().html.add_child(folium.Element(html))

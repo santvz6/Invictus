@@ -1,8 +1,10 @@
 *.ipynb filter=nbstripout
 *.zpln filter=nbstripout
 *.ipynb diff=ipynb
-
 # Limpiamos la Metadata del Kernel
 # git config filter.nbstripout.clean "nbstripout --extra-keys 'metadata.kernelspec metadata.language_info.version'"
-# git config filter.nbstripout.clean "C:/Users/77422/Desktop/INVICTUS/venv/Scripts/nbstripout.exe --extra-keys 'metadata.kernelspec metadata.language_info.version'"
+# git config filter.nbstripout.clean "C:/Users/user/Desktop/INVICTUS/venv/Scripts/nbstripout.exe --extra-keys 'metadata.kernelspec metadata.language_info.version'"
 # poner el path para hacer nbstripout exacto.
+# Alternativa:
+# nbstripout --install --attributes .gitattributes
+VIEWME.mp4 filter=lfs diff=lfs merge=lfs -text

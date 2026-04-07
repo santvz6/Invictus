@@ -1,0 +1,44 @@
+# ==========================================
+# REQUERIMIENTOS DEL PROYECTO
+# ==========================================
+
+# --- Core Data Processing ---
+pandas
+
+# --- Core Machine Learning & Deep Learning ---
+scikit-learn
+
+# --- Explicabilidad e Interpretabilidad ---
+shap
+
+# --- Visualizacion y Dashboard/Interfaz de Usuario ---
+matplotlib
+seaborn
+matplotlib-inline
+ipython
+
+streamlit
+streamlit-folium
+geopandas
+shapely
+geopy
+mapclassify
+plotly
+folium
+branca
+
+# --- Cliente HTTP para integraciones externas ---
+requests
+
+# --- LLM Local (Ollama) ---
+# Requiere: ollama pull qwen:7b
+# Ejecutar: ollama serve
+
+
+# --- Utilidades de Desarrollo ---
+# Evita conflictos de git al limpiar el output de los notebooks
+nbstripout 
+# Nota: Tras instalar, ejecutar en terminal: nbstripout --install
+
+# Manejo de configuración
+# pyyaml
