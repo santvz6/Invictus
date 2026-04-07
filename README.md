@@ -205,7 +205,7 @@ graph LR
     E --> F[Fase E<br>Gap Consumo No Explicado]
     F --> G[🔬 Fourier + RF]
     G --> H[📊 Dashboard]
-    La carpeta 
+    
     style A fill:#1b4965,stroke:#4cc9f0,color:#fff
     style G fill:#e76f51,stroke:#f4a261,color:#fff
     style H fill:#52b788,stroke:#d9ed92,color:#fff
